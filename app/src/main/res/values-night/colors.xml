@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="dark_primary">#FACB52</color>
+    <color name="dark_on_primary">#3A2C00</color>
+    <color name="dark_primary_container">#5C4300</color>
+    <color name="dark_on_primary_container">#FFF2C4</color>
+    <color name="dark_background">#1F1F1F</color>
+    <color name="dark_on_background">#FFF6E5</color>
+    <color name="dark_surface">#1F1F1F</color>
+    <color name="dark_on_surface">#FFF6E5</color>
+    <color name="dark_surface_container">#2A2A2A</color>
+    <color name="dark_surface_container_low">#252525</color>
+    <color name="dark_surface_variant">#3A3428</color>
+    <color name="dark_on_surface_variant">#D8C9A2</color>
+    <color name="dark_outline">#786D55</color>
+    <color name="selection_stroke_color">#FACB52</color>
+    <color name="note_stroke_color">#786D55</color>
+</resources>

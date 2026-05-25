@@ -2,14 +2,20 @@ package com.example.notavia
 
 import android.content.res.ColorStateList
 import android.os.Bundle
+import android.text.InputType
+import android.util.TypedValue
 import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
+import android.widget.ImageView
 import android.widget.LinearLayout
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.AppCompatEditText
+import androidx.appcompat.widget.AppCompatImageButton
 import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
 import androidx.core.view.ViewCompat
@@ -22,6 +28,7 @@ import com.example.notavia.data.NotaviaDatabase
 import com.example.notavia.databinding.ActivityEditNoteBinding
 import com.example.notavia.settings.CategoryPreferences
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.launch
 
 class EditNoteActivity : AppCompatActivity() {
@@ -32,7 +39,6 @@ class EditNoteActivity : AppCompatActivity() {
     private var noteId: Long = NO_NOTE_ID
     private var existingNote: Note? = null
     private val selectedCategories = linkedSetOf(NoteCategories.DEFAULT)
-    private var isUpdatingCategoryUi: Boolean = false
     private val categoryButtons = mutableMapOf<String, MaterialButton>()
     private val customCategories = linkedSetOf<String>()
     private val hiddenCategories = linkedSetOf<String>()
@@ -83,7 +89,49 @@ class EditNoteActivity : AppCompatActivity() {
     private fun setupCategoryPicker() {
         renderCategoryButtons()
 
-        binding.customCategoryEditText.setOnEditorActionListener { _, actionId, event ->
+        observeHiddenCategories()
+        observeCustomCategories()
+        loadCustomCategoryOptions()
+        updateCategoryUi()
+    }
+
+    private fun showAddCategoryDialog() {
+        val input = AppCompatEditText(this).apply {
+            hint = getString(R.string.category_name_hint)
+            imeOptions = EditorInfo.IME_ACTION_DONE
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+            maxLines = 1
+            setSingleLine(true)
+            textSize = 16f
+        }
+        val inputContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(24), dp(6), dp(24), 0)
+            addView(
+                input,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    dp(48),
+                ),
+            )
+        }
+        val dialog = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.custom_category_hint)
+            .setView(inputContainer)
+            .setPositiveButton(R.string.add_category_action, null)
+            .setNegativeButton(R.string.cancel_action, null)
+            .create()
+
+        fun submitCategory(): Boolean {
+            val rawCategory = input.text?.toString()?.trim().orEmpty()
+            if (rawCategory.isBlank()) return false
+
+            addCustomCategory(rawCategory)
+            dialog.dismiss()
+            return true
+        }
+
+        input.setOnEditorActionListener { _, actionId, event ->
             val isKeyboardDone = actionId == EditorInfo.IME_ACTION_DONE
             val isEnterUp = event?.let {
                 it.keyCode == KeyEvent.KEYCODE_ENTER && it.action == KeyEvent.ACTION_UP
@@ -92,21 +140,27 @@ class EditNoteActivity : AppCompatActivity() {
                 return@setOnEditorActionListener false
             }
 
-            addCustomCategoryFromInput()
-            true
+            submitCategory()
         }
-        binding.customCategoryEditText.setOnKeyListener { _, keyCode, event ->
+        input.setOnKeyListener { _, keyCode, event ->
             if (keyCode != KeyEvent.KEYCODE_ENTER || event.action != KeyEvent.ACTION_UP) {
                 return@setOnKeyListener false
             }
 
-            addCustomCategoryFromInput()
-            true
+            submitCategory()
         }
 
-        loadCustomCategoryOptions()
-        observeHiddenCategories()
-        updateCategoryUi()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                submitCategory()
+            }
+            input.requestFocus()
+            input.post {
+                val inputMethodManager = getSystemService<InputMethodManager>()
+                inputMethodManager?.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT)
+            }
+        }
+        dialog.show()
     }
 
     private fun observeHiddenCategories() {
@@ -114,6 +168,15 @@ class EditNoteActivity : AppCompatActivity() {
             categoryPreferences.hiddenCategoriesFlow.collect { categories ->
                 hiddenCategories.clear()
                 hiddenCategories.addAll(categories)
+                renderCategoryButtons()
+            }
+        }
+    }
+
+    private fun observeCustomCategories() {
+        lifecycleScope.launch {
+            categoryPreferences.customCategoriesFlow.collect { categories ->
+                customCategories.addAll(categories)
                 renderCategoryButtons()
             }
         }
@@ -127,7 +190,7 @@ class EditNoteActivity : AppCompatActivity() {
             customCategories.addAll(
                 repository.getAllNotes()
                     .flatMap { NoteCategories.parse(it.category) }
-                    .filterNot { NoteCategories.isStandard(it) },
+                    .filterNot { NoteCategories.isStandard(it) || it == NoteCategories.ALL },
             )
             renderCategoryButtons()
         }
@@ -136,6 +199,7 @@ class EditNoteActivity : AppCompatActivity() {
     private fun renderCategoryButtons() {
         categoryButtons.clear()
         binding.categoryButtonsContainer.removeAllViews()
+        addCategoryAddButton()
 
         val categories = (NoteCategories.STANDARD + customCategories + selectedCategories)
             .map { NoteCategories.normalize(it) }
@@ -146,6 +210,33 @@ class EditNoteActivity : AppCompatActivity() {
             addCategoryButton(category)
         }
         updateCategoryButtons()
+    }
+
+    private fun addCategoryAddButton() {
+        val selectableBackground = TypedValue()
+        theme.resolveAttribute(
+            android.R.attr.selectableItemBackgroundBorderless,
+            selectableBackground,
+            true,
+        )
+        val button = AppCompatImageButton(this).apply {
+            setImageResource(R.drawable.plus)
+            background = ContextCompat.getDrawable(this@EditNoteActivity, selectableBackground.resourceId)
+            contentDescription = getString(R.string.custom_category_hint)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+            setColorFilter(ContextCompat.getColor(this@EditNoteActivity, R.color.note_stroke_color))
+            setOnClickListener {
+                showAddCategoryDialog()
+            }
+        }
+        val params = LinearLayout.LayoutParams(
+            dp(32),
+            dp(32),
+        ).apply {
+            marginEnd = dp(8)
+        }
+        binding.categoryButtonsContainer.addView(button, params)
     }
 
     private fun addCategoryButton(category: String) {
@@ -174,16 +265,20 @@ class EditNoteActivity : AppCompatActivity() {
         categoryButtons[category] = button
     }
 
-    private fun addCustomCategoryFromInput() {
-        val rawCategory = binding.customCategoryEditText.text?.toString()?.trim().orEmpty()
+    private fun addCustomCategory(rawCategory: String) {
         if (rawCategory.isBlank()) return
 
         val category = NoteCategories.normalize(rawCategory)
+        if (category == NoteCategories.ALL) return
+
         if (!NoteCategories.isStandard(category)) {
             customCategories.add(category)
         }
         restoreHiddenCategory(category)
         selectCategory(category)
+        lifecycleScope.launch {
+            categoryPreferences.setCustomCategories(customCategories)
+        }
         renderCategoryButtons()
         updateCategoryUi()
     }
@@ -204,6 +299,7 @@ class EditNoteActivity : AppCompatActivity() {
             selectedCategories.add(NoteCategories.DEFAULT)
             return
         }
+        if (normalizedCategory == NoteCategories.ALL) return
 
         selectedCategories.remove(NoteCategories.DEFAULT)
         if (selectedCategories.contains(normalizedCategory)) {
@@ -223,6 +319,7 @@ class EditNoteActivity : AppCompatActivity() {
             selectedCategories.add(NoteCategories.DEFAULT)
             return
         }
+        if (normalizedCategory == NoteCategories.ALL) return
 
         selectedCategories.remove(NoteCategories.DEFAULT)
         selectedCategories.add(normalizedCategory)
@@ -248,13 +345,7 @@ class EditNoteActivity : AppCompatActivity() {
     private fun saveNote() {
         val title = binding.titleEditText.text?.toString()?.trim().orEmpty()
         val content = binding.contentEditText.text?.toString()?.trim().orEmpty()
-        val categoryInput = binding.customCategoryEditText.text?.toString()?.trim().orEmpty()
-        val categoriesToSave = selectedCategories.toMutableList()
-        if (categoryInput.isNotBlank()) {
-            restoreHiddenCategory(categoryInput)
-            categoriesToSave.add(categoryInput)
-        }
-        val category = NoteCategories.serialize(categoriesToSave)
+        val category = NoteCategories.serialize(selectedCategories)
 
         if (title.isBlank() && content.isBlank()) {
             return
@@ -311,14 +402,12 @@ class EditNoteActivity : AppCompatActivity() {
 
     private fun hasEditorFocus(): Boolean {
         return binding.titleEditText.hasFocus() ||
-            binding.customCategoryEditText.hasFocus() ||
             binding.contentEditText.hasFocus()
     }
 
     private fun clearEditorFocus() {
         val focusedView = currentFocus ?: binding.contentEditText
         binding.titleEditText.clearFocus()
-        binding.customCategoryEditText.clearFocus()
         binding.contentEditText.clearFocus()
         binding.main.requestFocus()
         val inputMethodManager = getSystemService<InputMethodManager>()
@@ -336,11 +425,6 @@ class EditNoteActivity : AppCompatActivity() {
             }
         }
 
-        isUpdatingCategoryUi = true
-        if (binding.customCategoryEditText.text?.isNotEmpty() == true) {
-            binding.customCategoryEditText.text?.clear()
-        }
-        isUpdatingCategoryUi = false
         updateCategoryButtons()
     }
 

@@ -11,6 +11,9 @@
     <string name="content_hint">Текст заметки</string>
     <string name="category_title">Категории</string>
     <string name="custom_category_hint">Добавить категорию</string>
+    <string name="category_name_hint">Название</string>
+    <string name="add_category_action">Добавить</string>
+    <string name="cancel_action">Отмена</string>
     <string name="save_note">Сохранить</string>
     <string name="empty_state_title">Пока нет заметок</string>
     <string name="empty_state_message">Создай свою первую заметку</string>

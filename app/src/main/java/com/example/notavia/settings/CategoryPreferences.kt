@@ -48,10 +48,29 @@ class CategoryPreferences(private val context: Context) {
                 .orEmpty()
         }
 
+    val customCategoriesFlow: Flow<Set<String>> = context.categoryDataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences ->
+            preferences[Keys.CUSTOM_CATEGORIES]
+                ?.split(SEPARATOR)
+                ?.filter { it.isNotBlank() }
+                ?.map { NoteCategories.normalize(it) }
+                ?.filterNot { NoteCategories.isStandard(it) || it == NoteCategories.ALL }
+                ?.toSet()
+                .orEmpty()
+        }
+
     suspend fun setPinnedCategories(categories: Set<String>) {
         context.categoryDataStore.edit { preferences ->
             val pinnedCategories = categories
                 .map { NoteCategories.normalize(it) }
+                .filterNot { NoteCategories.isReserved(it) }
                 .distinct()
             if (pinnedCategories.isEmpty()) {
                 preferences.remove(Keys.PINNED_CATEGORIES)
@@ -65,7 +84,7 @@ class CategoryPreferences(private val context: Context) {
         context.categoryDataStore.edit { preferences ->
             val hiddenCategories = categories
                 .map { NoteCategories.normalize(it) }
-                .filterNot { it == NoteCategories.DEFAULT }
+                .filterNot { NoteCategories.isReserved(it) }
                 .distinct()
             if (hiddenCategories.isEmpty()) {
                 preferences.remove(Keys.HIDDEN_CATEGORIES)
@@ -75,9 +94,24 @@ class CategoryPreferences(private val context: Context) {
         }
     }
 
+    suspend fun setCustomCategories(categories: Set<String>) {
+        context.categoryDataStore.edit { preferences ->
+            val customCategories = categories
+                .map { NoteCategories.normalize(it) }
+                .filterNot { NoteCategories.isStandard(it) || it == NoteCategories.ALL }
+                .distinct()
+            if (customCategories.isEmpty()) {
+                preferences.remove(Keys.CUSTOM_CATEGORIES)
+            } else {
+                preferences[Keys.CUSTOM_CATEGORIES] = customCategories.joinToString(SEPARATOR)
+            }
+        }
+    }
+
     private object Keys {
         val PINNED_CATEGORIES = stringPreferencesKey("pinned_categories")
         val HIDDEN_CATEGORIES = stringPreferencesKey("hidden_categories")
+        val CUSTOM_CATEGORIES = stringPreferencesKey("custom_categories")
     }
 
     private companion object {

@@ -8,6 +8,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import com.example.notavia.data.Note
+import com.example.notavia.data.NoteCategories
 import com.example.notavia.data.NoteRepository
 import com.example.notavia.data.NotaviaDatabase
 import com.example.notavia.databinding.ActivityViewNoteBinding
@@ -73,6 +74,10 @@ class ViewNoteActivity : AppCompatActivity() {
         binding.contentTextView.text = note.content.ifBlank {
             getString(R.string.empty_note_preview)
         }
+        binding.categoryTextView.text = getString(
+            R.string.category_format,
+            NoteCategories.display(note.category),
+        )
         binding.pinnedBadgeTextView.visibility = if (note.isPinned) {
             android.view.View.VISIBLE
         } else {

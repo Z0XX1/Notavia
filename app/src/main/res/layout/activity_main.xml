@@ -101,7 +101,7 @@
     <com.google.android.material.card.MaterialCardView
         android:id="@+id/searchCardView"
         android:layout_width="0dp"
-        android:layout_height="40dp"
+        android:layout_height="36dp"
         android:layout_marginStart="20dp"
         android:layout_marginTop="12dp"
         android:layout_marginEnd="20dp"
@@ -124,8 +124,8 @@
             android:paddingEnd="10dp">
 
             <ImageView
-                android:layout_width="16dp"
-                android:layout_height="16dp"
+                android:layout_width="15dp"
+                android:layout_height="15dp"
                 android:contentDescription="@null"
                 android:importantForAccessibility="no"
                 android:src="@drawable/search"
@@ -147,9 +147,31 @@
                 android:padding="0dp"
                 android:textColor="?attr/colorOnSurface"
                 android:textColorHint="?attr/colorOnSurfaceVariant"
-                android:textSize="14sp" />
+                android:textSize="13sp" />
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
+
+    <HorizontalScrollView
+        android:id="@+id/categoryFilterScrollView"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:clipToPadding="false"
+        android:overScrollMode="never"
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp"
+        android:scrollbars="none"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/searchCardView">
+
+        <LinearLayout
+            android:id="@+id/categoryFilterContainer"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal" />
+    </HorizontalScrollView>
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/notesRecyclerView"
@@ -164,7 +186,7 @@
         app:layout_constraintBottom_toTopOf="@id/bottomNavigationView"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/searchCardView"
+        app:layout_constraintTop_toBottomOf="@id/categoryFilterScrollView"
         tools:itemCount="3"
         tools:listitem="@layout/item_note"
         tools:visibility="visible" />
@@ -180,7 +202,7 @@
         app:layout_constraintBottom_toTopOf="@id/bottomNavigationView"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/searchCardView"
+        app:layout_constraintTop_toBottomOf="@id/categoryFilterScrollView"
         tools:visibility="gone">
 
         <TextView
@@ -213,7 +235,7 @@
         app:layout_constraintBottom_toTopOf="@id/bottomNavigationView"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/searchCardView">
+        app:layout_constraintTop_toBottomOf="@id/categoryFilterScrollView">
 
         <TextView
             android:id="@+id/checklistsTitleTextView"

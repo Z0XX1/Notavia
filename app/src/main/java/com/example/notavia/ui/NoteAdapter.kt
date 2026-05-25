@@ -9,6 +9,7 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.core.content.ContextCompat
 import com.example.notavia.R
 import com.example.notavia.data.Note
+import com.example.notavia.data.NoteCategories
 import com.example.notavia.databinding.ItemNoteBinding
 import java.text.DateFormat
 import java.util.Date
@@ -59,6 +60,7 @@ class NoteAdapter(
             binding.contentTextView.text = note.content.ifBlank {
                 binding.root.context.getString(R.string.empty_note_preview)
             }
+            binding.categoryTextView.text = NoteCategories.display(note.category)
             binding.updatedAtTextView.text = binding.root.context.getString(
                 R.string.updated_at_format,
                 dateFormatter.format(Date(note.updatedAt)),

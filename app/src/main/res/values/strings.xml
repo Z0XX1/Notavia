@@ -9,6 +9,8 @@
     <string name="view_note_title">Просмотр</string>
     <string name="title_hint">Заголовок</string>
     <string name="content_hint">Текст заметки</string>
+    <string name="category_title">Категории</string>
+    <string name="custom_category_hint">Добавить категорию</string>
     <string name="save_note">Сохранить</string>
     <string name="empty_state_title">Пока нет заметок</string>
     <string name="empty_state_message">Создай свою первую заметку</string>
@@ -29,6 +31,7 @@
     <string name="select_all">Выбрать все</string>
     <string name="selected_count">Выбрано: 0</string>
     <string name="selected_count_format">Выбрано: %1$d</string>
+    <string name="selected_categories_count_format">Категорий: %1$d</string>
     <string name="pin_action">Закрепить</string>
     <string name="unpin_action">Открепить</string>
     <string name="delete_action">Удалить</string>
@@ -38,6 +41,8 @@
     <string name="words_count">Слова</string>
     <string name="lines_count">Строки</string>
     <string name="statistics_value">%1$d</string>
+    <string name="category_format">Категории: %1$s</string>
+    <string name="all_categories">Все</string>
     <string name="theme_settings_title">Тема оформления</string>
     <string name="theme_settings_description">Смена темы приложения если надоела тема по умолчанию</string>
 </resources>

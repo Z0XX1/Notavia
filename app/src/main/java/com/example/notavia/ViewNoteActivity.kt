@@ -9,9 +9,11 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import com.example.notavia.data.Note
 import com.example.notavia.data.NoteCategories
+import com.example.notavia.data.NotePriority
 import com.example.notavia.data.NoteRepository
 import com.example.notavia.data.NotaviaDatabase
 import com.example.notavia.databinding.ActivityViewNoteBinding
+import com.example.notavia.ui.NotePriorityUi
 import kotlinx.coroutines.launch
 
 class ViewNoteActivity : AppCompatActivity() {
@@ -78,6 +80,13 @@ class ViewNoteActivity : AppCompatActivity() {
             R.string.category_format,
             NoteCategories.display(note.category),
         )
+        val priority = NotePriority.fromStorage(note.priority)
+        binding.priorityIndicatorImageView.visibility = if (priority == NotePriority.NONE) {
+            android.view.View.GONE
+        } else {
+            android.view.View.VISIBLE
+        }
+        NotePriorityUi.applyTo(binding.priorityIndicatorImageView, priority)
         binding.pinnedBadgeTextView.visibility = if (note.isPinned) {
             android.view.View.VISIBLE
         } else {

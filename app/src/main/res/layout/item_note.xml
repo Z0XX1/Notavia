@@ -26,22 +26,40 @@
             android:layout_weight="1"
             android:orientation="vertical">
 
-            <LinearLayout
+            <androidx.constraintlayout.widget.ConstraintLayout
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="center_vertical"
-                android:orientation="horizontal">
+                android:layout_height="wrap_content">
 
                 <TextView
                     android:id="@+id/titleTextView"
-                    android:layout_width="0dp"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
+                    android:ellipsize="end"
                     android:maxLines="2"
                     android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
                     android:textColor="?attr/colorOnSurface"
                     android:textStyle="bold"
+                    app:layout_constrainedWidth="true"
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    app:layout_constraintEnd_toStartOf="@id/priorityIndicatorImageView"
+                    app:layout_constraintHorizontal_bias="0"
+                    app:layout_constraintHorizontal_chainStyle="packed"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toTopOf="parent"
                     tools:text="Список бэм бэм бэм" />
+
+                <ImageView
+                    android:id="@+id/priorityIndicatorImageView"
+                    android:layout_width="10dp"
+                    android:layout_height="10dp"
+                    android:layout_marginStart="6dp"
+                    android:contentDescription="@string/priority_picker"
+                    android:src="@drawable/circle"
+                    app:layout_constraintBottom_toBottomOf="@id/titleTextView"
+                    app:layout_constraintEnd_toStartOf="@id/pinnedImageView"
+                    app:layout_constraintStart_toEndOf="@id/titleTextView"
+                    app:layout_constraintTop_toTopOf="@id/titleTextView"
+                    app:tint="@color/priority_none" />
 
                 <ImageView
                     android:id="@+id/pinnedImageView"
@@ -51,9 +69,13 @@
                     android:contentDescription="@string/pinned_note"
                     android:src="@drawable/pushpin"
                     android:visibility="gone"
+                    app:layout_constraintBottom_toBottomOf="@id/titleTextView"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintStart_toEndOf="@id/priorityIndicatorImageView"
+                    app:layout_constraintTop_toTopOf="@id/titleTextView"
                     app:tint="?attr/colorPrimary"
                     tools:visibility="visible" />
-            </LinearLayout>
+            </androidx.constraintlayout.widget.ConstraintLayout>
 
             <TextView
                 android:id="@+id/contentTextView"
@@ -96,7 +118,7 @@
             android:layout_height="24dp"
             android:layout_marginStart="12dp"
             android:contentDescription="@string/selected_note"
-            android:src="@drawable/empty"
+            android:src="@drawable/emptycircle"
             android:visibility="gone"
             tools:visibility="visible" />
     </LinearLayout>

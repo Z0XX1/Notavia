@@ -15,4 +15,8 @@
     <color name="dark_outline">#786D55</color>
     <color name="selection_stroke_color">#FACB52</color>
     <color name="note_stroke_color">#786D55</color>
+    <color name="priority_none">#8C8372</color>
+    <color name="priority_high">#E88A8A</color>
+    <color name="priority_medium">#DEC064</color>
+    <color name="priority_low">#86C894</color>
 </resources>

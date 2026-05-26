@@ -18,7 +18,7 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var binding: ActivitySettingsBinding
     private lateinit var themePreferences: ThemePreferences
 
-    private var currentTheme: AppTheme = AppTheme.LIGHT
+    private var currentTheme: AppTheme = AppTheme.DARK
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

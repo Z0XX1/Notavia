@@ -11,6 +11,8 @@ data class Note(
     val content: String,
     @ColumnInfo(defaultValue = "'Без категории'")
     val category: String = NoteCategories.DEFAULT,
+    @ColumnInfo(defaultValue = "'none'")
+    val priority: String = NotePriority.NONE.storageValue,
     val createdAt: Long,
     val updatedAt: Long,
     val isPinned: Boolean = false,

@@ -39,7 +39,7 @@
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/settings"
             android:padding="12dp"
-            android:src="@drawable/setting"
+            android:src="@drawable/settings"
             app:tint="?attr/colorOnBackground" />
     </LinearLayout>
 
@@ -257,28 +257,6 @@
             android:textColor="?attr/colorOnSurfaceVariant" />
     </LinearLayout>
 
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/addNoteFab"
-        style="@style/Widget.Material3.Button"
-        android:layout_width="60dp"
-        android:layout_height="60dp"
-        android:layout_margin="16dp"
-        android:contentDescription="@string/add_note"
-        android:insetTop="0dp"
-        android:insetBottom="0dp"
-        android:minWidth="0dp"
-        android:minHeight="0dp"
-        android:padding="0dp"
-        android:backgroundTint="?attr/colorPrimary"
-        app:layout_constraintBottom_toTopOf="@id/bottomNavigationView"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:cornerRadius="20dp"
-        app:icon="@drawable/plus"
-        app:iconGravity="textStart"
-        app:iconPadding="0dp"
-        app:iconSize="24dp"
-        app:iconTint="?attr/colorOnPrimary" />
-
     <LinearLayout
         android:id="@+id/selectionActionBar"
         android:layout_width="0dp"
@@ -322,13 +300,24 @@
             android:textColor="?attr/colorOnSurface" />
     </LinearLayout>
 
+    <com.example.notavia.ui.BottomBarCradleView
+        android:id="@+id/bottomNavigationCradleView"
+        android:layout_width="0dp"
+        android:layout_height="108dp"
+        android:translationZ="1dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
+
     <com.google.android.material.bottomnavigation.BottomNavigationView
         android:id="@+id/bottomNavigationView"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:minHeight="64dp"
-        android:backgroundTint="?attr/colorSurfaceContainerLow"
-        android:elevation="10dp"
+        android:minHeight="72dp"
+        android:background="@android:color/transparent"
+        android:backgroundTint="@android:color/transparent"
+        android:elevation="0dp"
+        android:translationZ="2dp"
         app:itemIconSize="20dp"
         app:itemIconTint="@color/bottom_navigation_item_colors"
         app:itemPaddingBottom="4dp"
@@ -339,5 +328,33 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:menu="@menu/bottom_navigation_menu" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/addNoteFab"
+        style="@style/Widget.Material3.Button"
+        android:layout_width="64dp"
+        android:layout_height="64dp"
+        android:layout_marginBottom="72dp"
+        android:backgroundTint="?attr/colorPrimary"
+        android:contentDescription="@string/add_note"
+        android:elevation="24dp"
+        android:insetTop="0dp"
+        android:insetBottom="0dp"
+        android:minWidth="0dp"
+        android:minHeight="0dp"
+        android:padding="0dp"
+        android:translationY="0dp"
+        android:translationZ="24dp"
+        android:visibility="gone"
+        app:cornerRadius="22dp"
+        app:icon="@drawable/addplusbutton"
+        app:iconGravity="textStart"
+        app:iconPadding="0dp"
+        app:iconSize="29dp"
+        app:iconTint="?attr/colorOnPrimary"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        tools:visibility="visible" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

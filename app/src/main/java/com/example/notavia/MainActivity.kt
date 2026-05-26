@@ -21,6 +21,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.doOnLayout
 import androidx.core.view.isVisible
 import androidx.core.view.updatePadding
 import androidx.core.widget.doAfterTextChanged
@@ -68,6 +69,7 @@ class MainActivity : AppCompatActivity() {
         enableEdgeToEdge()
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        setupBottomBarLayers()
 
         val defaultTopBarPadding = binding.defaultTopBar.capturePadding()
         val selectionTopBarPadding = binding.selectionTopBar.capturePadding()
@@ -124,6 +126,20 @@ class MainActivity : AppCompatActivity() {
         observeHiddenCategories()
         observeCustomCategories()
         renderUi()
+    }
+
+    private fun setupBottomBarLayers() {
+        binding.bottomNavigationCradleView.translationZ = 0f
+        binding.bottomNavigationView.translationZ = dp(1).toFloat()
+        binding.addNoteFab.stateListAnimator = null
+        binding.addNoteFab.elevation = dp(24).toFloat()
+        binding.addNoteFab.translationZ = dp(24).toFloat()
+        binding.addNoteFab.bringToFront()
+        binding.bottomNavigationView.doOnLayout { navigationView ->
+            val centerShift = navigationView.width / 30f
+            navigationView.findViewById<View>(R.id.navigation_notes)?.translationX = centerShift
+            navigationView.findViewById<View>(R.id.navigation_checklists)?.translationX = -centerShift
+        }
     }
 
     override fun onResume() {
@@ -362,11 +378,13 @@ class MainActivity : AppCompatActivity() {
         binding.categoryFilterScrollView.isVisible = showCategoryFilter
         binding.checklistsPlaceholderGroup.isVisible = !isNotesSection
         binding.bottomNavigationView.isVisible = !isSelectionMode
+        binding.bottomNavigationCradleView.isVisible = !isSelectionMode
         binding.selectionActionBar.isVisible = isSelectionMode
 
         binding.notesRecyclerView.isVisible = isNotesSection && hasVisibleNotes
         binding.emptyStateGroup.isVisible = isNotesSection && !hasVisibleNotes
         binding.addNoteFab.isVisible = isNotesSection && !isSelectionMode
+        binding.addNoteFab.bringToFront()
 
         if (isSelectionMode) {
             updateSelectionTitle()
@@ -417,7 +435,7 @@ class MainActivity : AppCompatActivity() {
             true,
         )
         val button = AppCompatImageButton(this).apply {
-            setImageResource(R.drawable.plus)
+            setImageResource(R.drawable.addplusfilter)
             background = ContextCompat.getDrawable(this@MainActivity, selectableBackground.resourceId)
             contentDescription = getString(R.string.custom_category_hint)
             scaleType = ImageView.ScaleType.CENTER_INSIDE

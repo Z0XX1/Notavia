@@ -48,4 +48,10 @@
     <string name="all_categories">Все</string>
     <string name="theme_settings_title">Тема оформления</string>
     <string name="theme_settings_description">Смена темы приложения если надоела тема по умолчанию</string>
+    <string name="priority_picker">&#x41F;&#x440;&#x438;&#x43E;&#x440;&#x438;&#x442;&#x435;&#x442; &#x437;&#x430;&#x43C;&#x435;&#x442;&#x43A;&#x438;</string>
+    <string name="priority_content_description">&#x41F;&#x440;&#x438;&#x43E;&#x440;&#x438;&#x442;&#x435;&#x442;: %1$s</string>
+    <string name="priority_none">&#x411;&#x435;&#x437; &#x43F;&#x440;&#x438;&#x43E;&#x440;&#x438;&#x442;&#x435;&#x442;&#x430;</string>
+    <string name="priority_high">&#x412;&#x44B;&#x441;&#x43E;&#x43A;&#x438;&#x439;</string>
+    <string name="priority_medium">&#x421;&#x440;&#x435;&#x434;&#x43D;&#x438;&#x439;</string>
+    <string name="priority_low">&#x41D;&#x438;&#x437;&#x43A;&#x438;&#x439;</string>
 </resources>

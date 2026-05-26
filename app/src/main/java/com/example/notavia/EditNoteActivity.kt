@@ -1,15 +1,23 @@
 package com.example.notavia
 
 import android.content.res.ColorStateList
+import android.graphics.Color
+import android.graphics.Typeface
+import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.text.InputType
 import android.util.TypedValue
+import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
+import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.PopupWindow
+import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AlertDialog
@@ -20,13 +28,16 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.widget.doAfterTextChanged
 import androidx.lifecycle.lifecycleScope
 import com.example.notavia.data.Note
 import com.example.notavia.data.NoteCategories
+import com.example.notavia.data.NotePriority
 import com.example.notavia.data.NoteRepository
 import com.example.notavia.data.NotaviaDatabase
 import com.example.notavia.databinding.ActivityEditNoteBinding
 import com.example.notavia.settings.CategoryPreferences
+import com.example.notavia.ui.NotePriorityUi
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.launch
@@ -42,6 +53,7 @@ class EditNoteActivity : AppCompatActivity() {
     private val categoryButtons = mutableMapOf<String, MaterialButton>()
     private val customCategories = linkedSetOf<String>()
     private val hiddenCategories = linkedSetOf<String>()
+    private var selectedPriority: NotePriority = NotePriority.NONE
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -51,8 +63,17 @@ class EditNoteActivity : AppCompatActivity() {
 
         ViewCompat.setOnApplyWindowInsetsListener(binding.main) { view, insets ->
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
             val isImeVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
-            view.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
+            val bottomInset = if (isImeVisible) {
+                maxOf(systemBars.bottom, ime.bottom)
+            } else {
+                systemBars.bottom
+            }
+            view.setPadding(systemBars.left, systemBars.top, systemBars.right, bottomInset)
+            if (isImeVisible && binding.contentEditText.hasFocus()) {
+                scrollToContentCursor()
+            }
             if (!isImeVisible && hasEditorFocus()) {
                 clearEditorFocus()
             }
@@ -65,6 +86,7 @@ class EditNoteActivity : AppCompatActivity() {
 
         setupActions()
         setupCategoryPicker()
+        updatePriorityUi()
 
         if (noteId != NO_NOTE_ID) {
             loadNote()
@@ -84,6 +106,22 @@ class EditNoteActivity : AppCompatActivity() {
         binding.saveButton.setOnClickListener {
             saveNote()
         }
+
+        binding.priorityButton.setOnClickListener {
+            showPriorityMenu()
+        }
+
+        binding.contentEditText.doAfterTextChanged {
+            scrollToContentCursor()
+        }
+        binding.contentEditText.setOnClickListener {
+            scrollToContentCursor()
+        }
+        binding.contentEditText.setOnFocusChangeListener { _, hasFocus ->
+            if (hasFocus) {
+                scrollToContentCursor()
+            }
+        }
     }
 
     private fun setupCategoryPicker() {
@@ -93,6 +131,99 @@ class EditNoteActivity : AppCompatActivity() {
         observeCustomCategories()
         loadCustomCategoryOptions()
         updateCategoryUi()
+    }
+
+    private fun showPriorityMenu() {
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = GradientDrawable().apply {
+                setColor(resolveThemeColor(com.google.android.material.R.attr.colorSurface))
+                cornerRadius = dp(16).toFloat()
+                setStroke(dp(1), ContextCompat.getColor(this@EditNoteActivity, R.color.note_stroke_color))
+            }
+            clipToOutline = true
+        }
+
+        var popupWindow: PopupWindow? = null
+        listOf(
+            NotePriority.NONE,
+            NotePriority.HIGH,
+            NotePriority.MEDIUM,
+            NotePriority.LOW,
+        ).forEach { priority ->
+            container.addView(
+                createPriorityRow(priority) {
+                    selectedPriority = priority
+                    updatePriorityUi()
+                    popupWindow?.dismiss()
+                },
+            )
+        }
+
+        popupWindow = PopupWindow(
+            container,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            true,
+        ).apply {
+            setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            isOutsideTouchable = true
+            elevation = dp(8).toFloat()
+        }
+        popupWindow.showAsDropDown(binding.priorityButton, 0, dp(2))
+    }
+
+    private fun createPriorityRow(
+        priority: NotePriority,
+        onClick: () -> Unit,
+    ): View {
+        val selectableBackground = TypedValue()
+        theme.resolveAttribute(
+            android.R.attr.selectableItemBackground,
+            selectableBackground,
+            true,
+        )
+
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            isClickable = true
+            isFocusable = true
+            minimumWidth = dp(166)
+            background = ContextCompat.getDrawable(this@EditNoteActivity, selectableBackground.resourceId)
+            setPadding(dp(14), dp(10), dp(16), dp(10))
+            setOnClickListener { onClick() }
+
+            addView(
+                ImageView(this@EditNoteActivity).apply {
+                    setImageResource(R.drawable.circle)
+                    NotePriorityUi.applyTo(this, priority)
+                },
+                LinearLayout.LayoutParams(dp(12), dp(12)),
+            )
+            addView(
+                TextView(this@EditNoteActivity).apply {
+                    text = getString(NotePriorityUi.labelRes(priority))
+                    textSize = 14f
+                    setTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnSurface))
+                    typeface = if (priority == selectedPriority) {
+                        Typeface.DEFAULT_BOLD
+                    } else {
+                        Typeface.DEFAULT
+                    }
+                },
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                ).apply {
+                    marginStart = dp(10)
+                },
+            )
+        }
+    }
+
+    private fun updatePriorityUi() {
+        NotePriorityUi.applyTo(binding.priorityButton, selectedPriority)
     }
 
     private fun showAddCategoryDialog() {
@@ -220,11 +351,11 @@ class EditNoteActivity : AppCompatActivity() {
             true,
         )
         val button = AppCompatImageButton(this).apply {
-            setImageResource(R.drawable.plus)
+            setImageResource(R.drawable.addplusfilter)
             background = ContextCompat.getDrawable(this@EditNoteActivity, selectableBackground.resourceId)
             contentDescription = getString(R.string.custom_category_hint)
             scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setPadding(dp(8), dp(8), dp(8), dp(8))
+            setPadding(dp(7), dp(7), dp(7), dp(7))
             setColorFilter(ContextCompat.getColor(this@EditNoteActivity, R.color.note_stroke_color))
             setOnClickListener {
                 showAddCategoryDialog()
@@ -336,6 +467,8 @@ class EditNoteActivity : AppCompatActivity() {
             binding.screenTitleTextView.text = getString(R.string.edit_note_title)
             binding.titleEditText.setText(note.title)
             binding.contentEditText.setText(note.content)
+            selectedPriority = NotePriority.fromStorage(note.priority)
+            updatePriorityUi()
             selectedCategories.clear()
             selectedCategories.addAll(NoteCategories.parse(note.category))
             updateCategoryUi()
@@ -356,11 +489,13 @@ class EditNoteActivity : AppCompatActivity() {
             title = title,
             content = content,
             category = category,
+            priority = selectedPriority.storageValue,
             updatedAt = now,
         ) ?: Note(
             title = title,
             content = content,
             category = category,
+            priority = selectedPriority.storageValue,
             createdAt = now,
             updatedAt = now,
         )
@@ -414,6 +549,30 @@ class EditNoteActivity : AppCompatActivity() {
         inputMethodManager?.hideSoftInputFromWindow(focusedView.windowToken, 0)
     }
 
+    private fun scrollToContentCursor() {
+        binding.contentEditText.post {
+            val layout = binding.contentEditText.layout ?: return@post
+            val cursorPosition = binding.contentEditText.selectionStart.coerceAtLeast(0)
+            val cursorLine = layout.getLineForOffset(cursorPosition)
+            val cursorTop = binding.contentEditText.top + layout.getLineTop(cursorLine)
+            val cursorBottom = binding.contentEditText.top + layout.getLineBottom(cursorLine) + dp(72)
+            val visibleTop = binding.contentScrollView.scrollY
+            val visibleBottom = visibleTop + binding.contentScrollView.height - binding.contentScrollView.paddingBottom
+
+            when {
+                cursorBottom > visibleBottom -> {
+                    binding.contentScrollView.smoothScrollTo(
+                        0,
+                        cursorBottom - binding.contentScrollView.height + binding.contentScrollView.paddingBottom,
+                    )
+                }
+                cursorTop < visibleTop -> {
+                    binding.contentScrollView.smoothScrollTo(0, cursorTop)
+                }
+            }
+        }
+    }
+
     private fun updateCategoryUi() {
         val customSelectedCategories = selectedCategories
             .map { NoteCategories.normalize(it) }
@@ -458,6 +617,16 @@ class EditNoteActivity : AppCompatActivity() {
 
     private fun dp(value: Int): Int {
         return (value * resources.displayMetrics.density).toInt()
+    }
+
+    private fun resolveThemeColor(attr: Int): Int {
+        val typedValue = TypedValue()
+        theme.resolveAttribute(attr, typedValue, true)
+        return if (typedValue.resourceId != 0) {
+            ContextCompat.getColor(this, typedValue.resourceId)
+        } else {
+            typedValue.data
+        }
     }
 
     companion object {

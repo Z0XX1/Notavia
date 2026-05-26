@@ -36,4 +36,8 @@
     <color name="theme_preview_dark_active_fg">#3A2C00</color>
     <color name="theme_preview_dark_inactive_bg">#3A3428</color>
     <color name="theme_preview_dark_inactive_fg">#D8C9A2</color>
+    <color name="priority_none">#B3AA96</color>
+    <color name="priority_high">#E98989</color>
+    <color name="priority_medium">#E4C76B</color>
+    <color name="priority_low">#8DCD99</color>
 </resources>

@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [Note::class], version = 2, exportSchema = false)
+@Database(entities = [Note::class], version = 3, exportSchema = false)
 abstract class NotaviaDatabase : RoomDatabase() {
     abstract fun noteDao(): NoteDao
 
@@ -23,6 +23,14 @@ abstract class NotaviaDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE notes ADD COLUMN priority TEXT NOT NULL DEFAULT '${NotePriority.NONE.storageValue}'",
+                )
+            }
+        }
+
         fun getDatabase(context: Context): NotaviaDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -30,7 +38,7 @@ abstract class NotaviaDatabase : RoomDatabase() {
                     NotaviaDatabase::class.java,
                     "notavia_database",
                 )
-                    .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .build()
                 INSTANCE = instance
                 instance

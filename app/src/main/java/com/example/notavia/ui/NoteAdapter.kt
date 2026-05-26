@@ -10,6 +10,7 @@ import androidx.core.content.ContextCompat
 import com.example.notavia.R
 import com.example.notavia.data.Note
 import com.example.notavia.data.NoteCategories
+import com.example.notavia.data.NotePriority
 import com.example.notavia.databinding.ItemNoteBinding
 import java.text.DateFormat
 import java.util.Date
@@ -61,6 +62,13 @@ class NoteAdapter(
                 binding.root.context.getString(R.string.empty_note_preview)
             }
             binding.categoryTextView.text = NoteCategories.display(note.category)
+            val priority = NotePriority.fromStorage(note.priority)
+            binding.priorityIndicatorImageView.visibility = if (priority == NotePriority.NONE) {
+                android.view.View.GONE
+            } else {
+                android.view.View.VISIBLE
+            }
+            NotePriorityUi.applyTo(binding.priorityIndicatorImageView, priority)
             binding.updatedAtTextView.text = binding.root.context.getString(
                 R.string.updated_at_format,
                 dateFormatter.format(Date(note.updatedAt)),
@@ -79,7 +87,7 @@ class NoteAdapter(
             }
             if (isSelectionMode) {
                 binding.selectionImageView.setImageResource(
-                    if (isSelected) R.drawable.checked else R.drawable.empty,
+                    if (isSelected) R.drawable.checkcircle else R.drawable.emptycircle,
                 )
                 binding.selectionImageView.imageTintList = ColorStateList.valueOf(
                     ContextCompat.getColor(

@@ -10,6 +10,7 @@ import android.text.InputType
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
@@ -40,6 +41,8 @@ import com.example.notavia.settings.CategoryPreferences
 import com.example.notavia.ui.NotePriorityUi
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class EditNoteActivity : AppCompatActivity() {
@@ -54,6 +57,11 @@ class EditNoteActivity : AppCompatActivity() {
     private val customCategories = linkedSetOf<String>()
     private val hiddenCategories = linkedSetOf<String>()
     private var selectedPriority: NotePriority = NotePriority.NONE
+    private var isApplyingLoadedNote: Boolean = false
+    private var autoSaveDelayJob: Job? = null
+    private var autoSaveJob: Job? = null
+    private var pendingSaveAfterCurrent: Boolean = false
+    private var lastSavedDraft: NoteDraft? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -100,19 +108,28 @@ class EditNoteActivity : AppCompatActivity() {
 
     private fun setupActions() {
         binding.backButton.setOnClickListener {
-            finish()
-        }
-
-        binding.saveButton.setOnClickListener {
-            saveNote()
+            finishAfterAutoSave()
         }
 
         binding.priorityButton.setOnClickListener {
             showPriorityMenu()
         }
+        binding.priorityButton.setOnTouchListener { view, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> view.alpha = PRIORITY_BUTTON_PRESSED_ALPHA
+                MotionEvent.ACTION_UP,
+                MotionEvent.ACTION_CANCEL,
+                -> view.alpha = 1f
+            }
+            false
+        }
 
+        binding.titleEditText.doAfterTextChanged {
+            scheduleAutoSave()
+        }
         binding.contentEditText.doAfterTextChanged {
             scrollToContentCursor()
+            scheduleAutoSave()
         }
         binding.contentEditText.setOnClickListener {
             scrollToContentCursor()
@@ -155,6 +172,7 @@ class EditNoteActivity : AppCompatActivity() {
                 createPriorityRow(priority) {
                     selectedPriority = priority
                     updatePriorityUi()
+                    scheduleAutoSave()
                     popupWindow?.dismiss()
                 },
             )
@@ -223,7 +241,19 @@ class EditNoteActivity : AppCompatActivity() {
     }
 
     private fun updatePriorityUi() {
-        NotePriorityUi.applyTo(binding.priorityButton, selectedPriority)
+        if (selectedPriority == NotePriority.NONE) {
+            binding.priorityButton.setImageResource(R.drawable.addpriority)
+            binding.priorityButton.imageTintList = ColorStateList.valueOf(
+                ContextCompat.getColor(this, R.color.selection_stroke_color),
+            )
+            binding.priorityButton.contentDescription = getString(
+                R.string.priority_content_description,
+                getString(NotePriorityUi.labelRes(NotePriority.NONE)),
+            )
+        } else {
+            binding.priorityButton.setImageResource(R.drawable.circle)
+            NotePriorityUi.applyTo(binding.priorityButton, selectedPriority)
+        }
     }
 
     private fun showAddCategoryDialog() {
@@ -384,6 +414,7 @@ class EditNoteActivity : AppCompatActivity() {
             setOnClickListener {
                 toggleCategory(category)
                 updateCategoryUi()
+                scheduleAutoSave()
             }
         }
         val params = LinearLayout.LayoutParams(
@@ -412,6 +443,7 @@ class EditNoteActivity : AppCompatActivity() {
         }
         renderCategoryButtons()
         updateCategoryUi()
+        scheduleAutoSave()
     }
 
     private fun restoreHiddenCategory(category: String) {
@@ -464,46 +496,100 @@ class EditNoteActivity : AppCompatActivity() {
             }
 
             existingNote = note
-            binding.screenTitleTextView.text = getString(R.string.edit_note_title)
-            binding.titleEditText.setText(note.title)
-            binding.contentEditText.setText(note.content)
-            selectedPriority = NotePriority.fromStorage(note.priority)
-            updatePriorityUi()
-            selectedCategories.clear()
-            selectedCategories.addAll(NoteCategories.parse(note.category))
-            updateCategoryUi()
+            isApplyingLoadedNote = true
+            try {
+                binding.screenTitleTextView.text = getString(R.string.edit_note_title)
+                binding.titleEditText.setText(note.title)
+                binding.contentEditText.setText(note.content)
+                selectedPriority = NotePriority.fromStorage(note.priority)
+                updatePriorityUi()
+                selectedCategories.clear()
+                selectedCategories.addAll(NoteCategories.parse(note.category))
+                updateCategoryUi()
+                lastSavedDraft = currentDraft()
+            } finally {
+                isApplyingLoadedNote = false
+            }
         }
     }
 
-    private fun saveNote() {
-        val title = binding.titleEditText.text?.toString()?.trim().orEmpty()
-        val content = binding.contentEditText.text?.toString()?.trim().orEmpty()
-        val category = NoteCategories.serialize(selectedCategories)
+    private fun scheduleAutoSave() {
+        if (isApplyingLoadedNote) return
 
-        if (title.isBlank() && content.isBlank()) {
+        autoSaveDelayJob?.cancel()
+        autoSaveDelayJob = lifecycleScope.launch {
+            delay(AUTO_SAVE_DELAY_MS)
+            requestAutoSaveNow()
+        }
+    }
+
+    private fun requestAutoSaveNow() {
+        if (isApplyingLoadedNote) return
+
+        if (autoSaveJob?.isActive == true) {
+            pendingSaveAfterCurrent = true
             return
         }
 
+        autoSaveJob = lifecycleScope.launch {
+            do {
+                pendingSaveAfterCurrent = false
+                persistCurrentNote()
+            } while (pendingSaveAfterCurrent)
+        }
+    }
+
+    private fun flushAutoSaveThen(onComplete: () -> Unit = {}) {
+        autoSaveDelayJob?.cancel()
+        if (autoSaveJob?.isActive == true) {
+            pendingSaveAfterCurrent = true
+            lifecycleScope.launch {
+                autoSaveJob?.join()
+                onComplete()
+            }
+            return
+        }
+
+        autoSaveJob = lifecycleScope.launch {
+            persistCurrentNote()
+            onComplete()
+        }
+    }
+
+    private suspend fun persistCurrentNote() {
+        val draft = currentDraft()
+        if (draft == lastSavedDraft) return
+        if (existingNote == null && draft.title.isBlank() && draft.content.isBlank()) return
+
         val now = System.currentTimeMillis()
         val noteToSave = existingNote?.copy(
-            title = title,
-            content = content,
-            category = category,
-            priority = selectedPriority.storageValue,
+            title = draft.title,
+            content = draft.content,
+            category = draft.category,
+            priority = draft.priority,
             updatedAt = now,
         ) ?: Note(
-            title = title,
-            content = content,
-            category = category,
-            priority = selectedPriority.storageValue,
+            title = draft.title,
+            content = draft.content,
+            category = draft.category,
+            priority = draft.priority,
             createdAt = now,
             updatedAt = now,
         )
 
-        lifecycleScope.launch {
-            repository.saveNote(noteToSave)
-            finish()
-        }
+        val savedId = repository.saveNote(noteToSave)
+        existingNote = noteToSave.copy(id = savedId)
+        noteId = savedId
+        lastSavedDraft = draft
+    }
+
+    private fun currentDraft(): NoteDraft {
+        return NoteDraft(
+            title = binding.titleEditText.text?.toString()?.trim().orEmpty(),
+            content = binding.contentEditText.text?.toString().orEmpty(),
+            category = NoteCategories.serialize(selectedCategories),
+            priority = selectedPriority.storageValue,
+        )
     }
 
     private fun focusTitleField() {
@@ -518,6 +604,7 @@ class EditNoteActivity : AppCompatActivity() {
     }
 
     override fun onPause() {
+        flushAutoSaveThen()
         clearEditorFocus()
         super.onPause()
     }
@@ -528,11 +615,16 @@ class EditNoteActivity : AppCompatActivity() {
                 if (hasEditorFocus()) {
                     clearEditorFocus()
                 } else {
-                    isEnabled = false
-                    onBackPressedDispatcher.onBackPressed()
+                    finishAfterAutoSave()
                 }
             }
         })
+    }
+
+    private fun finishAfterAutoSave() {
+        flushAutoSaveThen {
+            finish()
+        }
     }
 
     private fun hasEditorFocus(): Boolean {
@@ -632,5 +724,14 @@ class EditNoteActivity : AppCompatActivity() {
     companion object {
         const val EXTRA_NOTE_ID = "extra_note_id"
         private const val NO_NOTE_ID = -1L
+        private const val AUTO_SAVE_DELAY_MS = 450L
+        private const val PRIORITY_BUTTON_PRESSED_ALPHA = 0.68f
     }
+
+    private data class NoteDraft(
+        val title: String,
+        val content: String,
+        val category: String,
+        val priority: String,
+    )
 }

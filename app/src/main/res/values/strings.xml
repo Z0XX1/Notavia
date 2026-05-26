@@ -22,9 +22,18 @@
     <string name="untitled_note">Без названия</string>
     <string name="empty_note_preview">Пустая заметка</string>
     <string name="updated_at_format">%1$s</string>
+    <string name="updated_at_with_deadline_format">%1$s | %2$s</string>
     <string name="settings">Настройки</string>
     <string name="light_theme">Светлая тема</string>
     <string name="dark_theme">Тёмная тема</string>
+    <string name="light_theme_short">Светлая</string>
+    <string name="dark_theme_short">Тёмная</string>
+    <string name="appearance_settings_section">Внешний вид</string>
+    <string name="font_size_title">Размер шрифта</string>
+    <string name="font_size_small">Маленький</string>
+    <string name="font_size_medium">Средний</string>
+    <string name="font_size_large">Большой</string>
+    <string name="theme_title">Тема</string>
     <string name="back">Назад</string>
     <string name="checklists_placeholder_title">Чек-листы позже</string>
     <string name="checklists_placeholder_message">Идёт активная доработка заметок</string>
@@ -54,4 +63,16 @@
     <string name="priority_high">&#x412;&#x44B;&#x441;&#x43E;&#x43A;&#x438;&#x439;</string>
     <string name="priority_medium">&#x421;&#x440;&#x435;&#x434;&#x43D;&#x438;&#x439;</string>
     <string name="priority_low">&#x41D;&#x438;&#x437;&#x43A;&#x438;&#x439;</string>
+    <string name="deadline_title">&#x414;&#x435;&#x434;&#x43B;&#x430;&#x439;&#x43D;</string>
+    <string name="deadline_not_selected">&#x41D;&#x435; &#x443;&#x43A;&#x430;&#x437;&#x430;&#x43D;</string>
+    <string name="deadline_clear">&#x411;&#x435;&#x437; &#x434;&#x435;&#x434;&#x43B;&#x430;&#x439;&#x43D;&#x430;</string>
+    <string name="deadline_format">&#x414;&#x435;&#x434;&#x43B;&#x430;&#x439;&#x43D;: %1$s</string>
+    <string name="delete_notes_title">&#x423;&#x434;&#x430;&#x43B;&#x435;&#x43D;&#x438;&#x435; &#x437;&#x430;&#x43C;&#x435;&#x442;&#x43E;&#x43A;</string>
+    <string name="delete_confirm_action">&#x423;&#x434;&#x430;&#x43B;&#x438;&#x442;&#x44C;</string>
+    <plurals name="delete_notes_confirmation_message">
+        <item quantity="one">&#x423;&#x434;&#x430;&#x43B;&#x438;&#x442;&#x44C; %1$d &#x43E;&#x431;&#x44A;&#x435;&#x43A;&#x442;</item>
+        <item quantity="few">&#x423;&#x434;&#x430;&#x43B;&#x438;&#x442;&#x44C; %1$d &#x43E;&#x431;&#x44A;&#x435;&#x43A;&#x442;&#x430;</item>
+        <item quantity="many">&#x423;&#x434;&#x430;&#x43B;&#x438;&#x442;&#x44C; %1$d &#x43E;&#x431;&#x44A;&#x435;&#x43A;&#x442;&#x43E;&#x432;</item>
+        <item quantity="other">&#x423;&#x434;&#x430;&#x43B;&#x438;&#x442;&#x44C; %1$d &#x43E;&#x431;&#x44A;&#x435;&#x43A;&#x442;&#x43E;&#x432;</item>
+    </plurals>
 </resources>

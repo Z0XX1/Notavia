@@ -13,6 +13,8 @@ data class Note(
     val category: String = NoteCategories.DEFAULT,
     @ColumnInfo(defaultValue = "'none'")
     val priority: String = NotePriority.NONE.storageValue,
+    @ColumnInfo(defaultValue = "NULL")
+    val deadlineAt: Long? = null,
     val createdAt: Long,
     val updatedAt: Long,
     val isPinned: Boolean = false,

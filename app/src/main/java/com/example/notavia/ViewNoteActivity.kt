@@ -5,7 +5,6 @@ import android.os.Bundle
 import android.view.MotionEvent
 import android.view.View
 import androidx.activity.enableEdgeToEdge
-import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
@@ -17,12 +16,18 @@ import com.example.notavia.data.NotaviaDatabase
 import com.example.notavia.databinding.ActivityViewNoteBinding
 import com.example.notavia.ui.NotePriorityUi
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
-class ViewNoteActivity : AppCompatActivity() {
+class ViewNoteActivity : NotaviaActivity() {
     private lateinit var binding: ActivityViewNoteBinding
     private lateinit var repository: NoteRepository
 
     private var noteId: Long = NO_NOTE_ID
+    private val deadlineFormatter: SimpleDateFormat by lazy {
+        SimpleDateFormat(DEADLINE_DATE_PATTERN, RUSSIAN_LOCALE)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -85,6 +90,17 @@ class ViewNoteActivity : AppCompatActivity() {
             R.string.category_format,
             NoteCategories.display(note.category),
         )
+        binding.deadlineTextView.visibility = if (note.deadlineAt == null) {
+            View.GONE
+        } else {
+            View.VISIBLE
+        }
+        note.deadlineAt?.let { deadline ->
+            binding.deadlineTextView.text = getString(
+                R.string.deadline_format,
+                deadlineFormatter.format(Date(deadline)),
+            )
+        }
         val priority = NotePriority.fromStorage(note.priority)
         binding.priorityIndicatorImageView.visibility = if (priority == NotePriority.NONE) {
             View.GONE
@@ -140,5 +156,7 @@ class ViewNoteActivity : AppCompatActivity() {
         const val EXTRA_NOTE_ID = "extra_note_id"
         private const val NO_NOTE_ID = -1L
         private const val BUTTON_PRESSED_ALPHA = 0.68f
+        private const val DEADLINE_DATE_PATTERN = "d MMM yyyy"
+        private val RUSSIAN_LOCALE: Locale = Locale.forLanguageTag("ru")
     }
 }

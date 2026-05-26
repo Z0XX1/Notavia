@@ -15,14 +15,15 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
+import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.NumberPicker
 import android.widget.PopupWindow
 import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.AppCompatEditText
 import androidx.appcompat.widget.AppCompatImageButton
 import androidx.core.content.ContextCompat
@@ -44,8 +45,13 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.text.DateFormatSymbols
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 
-class EditNoteActivity : AppCompatActivity() {
+class EditNoteActivity : NotaviaActivity() {
     private lateinit var binding: ActivityEditNoteBinding
     private lateinit var repository: NoteRepository
     private lateinit var categoryPreferences: CategoryPreferences
@@ -57,11 +63,27 @@ class EditNoteActivity : AppCompatActivity() {
     private val customCategories = linkedSetOf<String>()
     private val hiddenCategories = linkedSetOf<String>()
     private var selectedPriority: NotePriority = NotePriority.NONE
+    private var selectedDeadlineAt: Long? = null
+    private var isDeadlinePickerExpanded: Boolean = false
+    private var isUpdatingDeadlinePickers: Boolean = false
     private var isApplyingLoadedNote: Boolean = false
     private var autoSaveDelayJob: Job? = null
     private var autoSaveJob: Job? = null
     private var pendingSaveAfterCurrent: Boolean = false
     private var lastSavedDraft: NoteDraft? = null
+    private val deadlineDateFormatter: SimpleDateFormat by lazy {
+        SimpleDateFormat(DEADLINE_DATE_PATTERN, RUSSIAN_LOCALE)
+    }
+    private val monthLabels: Array<String> by lazy {
+        DateFormatSymbols.getInstance(RUSSIAN_LOCALE).shortMonths
+            .take(12)
+            .map { month ->
+                month.trim()
+                    .removeSuffix(".")
+                    .lowercase(RUSSIAN_LOCALE)
+            }
+            .toTypedArray()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -94,6 +116,7 @@ class EditNoteActivity : AppCompatActivity() {
 
         setupActions()
         setupCategoryPicker()
+        setupDeadlinePicker()
         updatePriorityUi()
 
         if (noteId != NO_NOTE_ID) {
@@ -150,6 +173,200 @@ class EditNoteActivity : AppCompatActivity() {
         observeCustomCategories()
         loadCustomCategoryOptions()
         updateCategoryUi()
+    }
+
+    private fun setupDeadlinePicker() {
+        listOf(
+            binding.deadlineDayPicker,
+            binding.deadlineMonthPicker,
+            binding.deadlineYearPicker,
+        ).forEach(::styleDeadlineNumberPicker)
+
+        configureDeadlinePickers(selectedDeadlineAt ?: todayStartMillis())
+        updateDeadlineUi()
+
+        val deadlineValueChangeListener = NumberPicker.OnValueChangeListener { _, _, _ ->
+            updateDeadlineFromPickers()
+        }
+        binding.deadlineDayPicker.setOnValueChangedListener(deadlineValueChangeListener)
+        binding.deadlineMonthPicker.setOnValueChangedListener(deadlineValueChangeListener)
+        binding.deadlineYearPicker.setOnValueChangedListener(deadlineValueChangeListener)
+
+        installAlphaPressFeedback(binding.deadlineHeader)
+        binding.deadlineHeader.setOnClickListener {
+            setDeadlinePickerExpanded(!isDeadlinePickerExpanded)
+        }
+
+        installAlphaPressFeedback(binding.clearDeadlineTextView)
+        binding.clearDeadlineTextView.setOnClickListener {
+            selectedDeadlineAt = null
+            updateDeadlineUi()
+            scheduleAutoSave()
+        }
+    }
+
+    private fun setDeadlinePickerExpanded(expanded: Boolean) {
+        if (isDeadlinePickerExpanded == expanded) return
+
+        isDeadlinePickerExpanded = expanded
+        binding.deadlineArrowImageView.animate()
+            .rotation(if (expanded) 90f else 0f)
+            .setDuration(DEADLINE_ARROW_ANIMATION_MS)
+            .start()
+
+        if (expanded) {
+            configureDeadlinePickers(selectedDeadlineAt ?: todayStartMillis())
+            binding.deadlinePickerCardView.apply {
+                visibility = View.VISIBLE
+                alpha = 0f
+                translationY = -dp(6).toFloat()
+                animate()
+                    .alpha(1f)
+                    .translationY(0f)
+                    .setDuration(DEADLINE_PICKER_ANIMATION_MS)
+                    .start()
+            }
+        } else {
+            binding.deadlinePickerCardView.animate()
+                .alpha(0f)
+                .translationY(-dp(6).toFloat())
+                .setDuration(DEADLINE_PICKER_ANIMATION_MS)
+                .withEndAction {
+                    binding.deadlinePickerCardView.visibility = View.GONE
+                    binding.deadlinePickerCardView.alpha = 1f
+                    binding.deadlinePickerCardView.translationY = 0f
+                }
+                .start()
+        }
+    }
+
+    private fun updateDeadlineFromPickers() {
+        if (isUpdatingDeadlinePickers) return
+
+        val deadline = coerceDeadlineMillis(
+            startOfDayMillis(
+                year = binding.deadlineYearPicker.value,
+                month = binding.deadlineMonthPicker.value,
+                day = binding.deadlineDayPicker.value,
+            ),
+        )
+        selectedDeadlineAt = deadline
+        configureDeadlinePickers(deadline)
+        updateDeadlineUi()
+        scheduleAutoSave()
+    }
+
+    private fun updateDeadlineUi() {
+        binding.deadlineValueTextView.text = selectedDeadlineAt?.let { deadline ->
+            deadlineDateFormatter.format(Date(deadline))
+        } ?: getString(R.string.deadline_not_selected)
+        binding.deadlineArrowImageView.rotation = if (isDeadlinePickerExpanded) 90f else 0f
+    }
+
+    private fun configureDeadlinePickers(deadlineMillis: Long) {
+        val coercedDeadline = coerceDeadlineMillis(deadlineMillis)
+        val (year, month, day) = dateParts(coercedDeadline)
+        val (currentYear, currentMonth, currentDay) = dateParts(todayStartMillis())
+
+        isUpdatingDeadlinePickers = true
+        try {
+            binding.deadlineYearPicker.minValue = currentYear
+            binding.deadlineYearPicker.maxValue = MAX_DEADLINE_YEAR
+            binding.deadlineYearPicker.value = year.coerceIn(currentYear, MAX_DEADLINE_YEAR)
+
+            val monthMin = if (year == currentYear) currentMonth else 1
+            val monthMax = 12
+            val safeMonth = month.coerceIn(monthMin, monthMax)
+            binding.deadlineMonthPicker.displayedValues = null
+            binding.deadlineMonthPicker.minValue = monthMin
+            binding.deadlineMonthPicker.maxValue = monthMax
+            binding.deadlineMonthPicker.displayedValues = (monthMin..monthMax)
+                .map { monthLabels[it - 1] }
+                .toTypedArray()
+            binding.deadlineMonthPicker.value = safeMonth
+
+            val dayMin = if (year == currentYear && safeMonth == currentMonth) currentDay else 1
+            val dayMax = daysInMonth(year, safeMonth)
+            val safeDay = day.coerceIn(dayMin, dayMax)
+            binding.deadlineDayPicker.displayedValues = null
+            binding.deadlineDayPicker.minValue = dayMin
+            binding.deadlineDayPicker.maxValue = dayMax
+            binding.deadlineDayPicker.displayedValues = (dayMin..dayMax)
+                .map { it.toString().padStart(2, '0') }
+                .toTypedArray()
+            binding.deadlineDayPicker.value = safeDay
+        } finally {
+            isUpdatingDeadlinePickers = false
+        }
+    }
+
+    private fun styleDeadlineNumberPicker(picker: NumberPicker) {
+        picker.wrapSelectorWheel = false
+        picker.descendantFocusability = NumberPicker.FOCUS_BLOCK_DESCENDANTS
+        picker.setOnLongPressUpdateInterval(120L)
+        tintNumberPickerText(picker)
+    }
+
+    private fun tintNumberPickerText(view: View) {
+        if (view is EditText) {
+            view.setTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnSurface))
+            view.textSize = 18f
+            view.typeface = Typeface.DEFAULT_BOLD
+            view.gravity = Gravity.CENTER
+        }
+        if (view is ViewGroup) {
+            for (index in 0 until view.childCount) {
+                tintNumberPickerText(view.getChildAt(index))
+            }
+        }
+    }
+
+    private fun todayStartMillis(): Long {
+        return Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+    }
+
+    private fun startOfDayMillis(year: Int, month: Int, day: Int): Long {
+        return Calendar.getInstance().apply {
+            set(Calendar.YEAR, year)
+            set(Calendar.MONTH, month - 1)
+            set(Calendar.DAY_OF_MONTH, day)
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+    }
+
+    private fun maxDeadlineMillis(): Long {
+        return startOfDayMillis(MAX_DEADLINE_YEAR, 12, 31)
+    }
+
+    private fun coerceDeadlineMillis(deadlineMillis: Long): Long {
+        return deadlineMillis.coerceIn(todayStartMillis(), maxDeadlineMillis())
+    }
+
+    private fun dateParts(deadlineMillis: Long): Triple<Int, Int, Int> {
+        val calendar = Calendar.getInstance().apply {
+            timeInMillis = deadlineMillis
+        }
+        return Triple(
+            calendar.get(Calendar.YEAR),
+            calendar.get(Calendar.MONTH) + 1,
+            calendar.get(Calendar.DAY_OF_MONTH),
+        )
+    }
+
+    private fun daysInMonth(year: Int, month: Int): Int {
+        return Calendar.getInstance().apply {
+            set(Calendar.YEAR, year)
+            set(Calendar.MONTH, month - 1)
+            set(Calendar.DAY_OF_MONTH, 1)
+        }.getActualMaximum(Calendar.DAY_OF_MONTH)
     }
 
     private fun showPriorityMenu() {
@@ -503,6 +720,9 @@ class EditNoteActivity : AppCompatActivity() {
                 binding.contentEditText.setText(note.content)
                 selectedPriority = NotePriority.fromStorage(note.priority)
                 updatePriorityUi()
+                selectedDeadlineAt = note.deadlineAt
+                configureDeadlinePickers(selectedDeadlineAt ?: todayStartMillis())
+                updateDeadlineUi()
                 selectedCategories.clear()
                 selectedCategories.addAll(NoteCategories.parse(note.category))
                 updateCategoryUi()
@@ -567,12 +787,14 @@ class EditNoteActivity : AppCompatActivity() {
             content = draft.content,
             category = draft.category,
             priority = draft.priority,
+            deadlineAt = draft.deadlineAt,
             updatedAt = now,
         ) ?: Note(
             title = draft.title,
             content = draft.content,
             category = draft.category,
             priority = draft.priority,
+            deadlineAt = draft.deadlineAt,
             createdAt = now,
             updatedAt = now,
         )
@@ -589,6 +811,7 @@ class EditNoteActivity : AppCompatActivity() {
             content = binding.contentEditText.text?.toString().orEmpty(),
             category = NoteCategories.serialize(selectedCategories),
             priority = selectedPriority.storageValue,
+            deadlineAt = selectedDeadlineAt,
         )
     }
 
@@ -740,6 +963,11 @@ class EditNoteActivity : AppCompatActivity() {
         private const val AUTO_SAVE_DELAY_MS = 450L
         private const val PRIORITY_BUTTON_PRESSED_ALPHA = 0.68f
         private const val BUTTON_PRESSED_ALPHA = 0.68f
+        private const val DEADLINE_ARROW_ANIMATION_MS = 180L
+        private const val DEADLINE_PICKER_ANIMATION_MS = 160L
+        private const val MAX_DEADLINE_YEAR = 2067
+        private const val DEADLINE_DATE_PATTERN = "d MMM yyyy"
+        private val RUSSIAN_LOCALE: Locale = Locale.forLanguageTag("ru")
     }
 
     private data class NoteDraft(
@@ -747,5 +975,6 @@ class EditNoteActivity : AppCompatActivity() {
         val content: String,
         val category: String,
         val priority: String,
+        val deadlineAt: Long?,
     )
 }

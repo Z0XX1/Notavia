@@ -3,19 +3,23 @@ package com.example.notavia
 import android.content.res.ColorStateList
 import android.content.Intent
 import android.graphics.Color
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.text.InputType
+import android.view.Gravity
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.AppCompatEditText
 import androidx.appcompat.widget.AppCompatImageButton
 import androidx.core.content.ContextCompat
@@ -34,12 +38,13 @@ import com.example.notavia.data.NotaviaDatabase
 import com.example.notavia.databinding.ActivityMainBinding
 import com.example.notavia.settings.CategoryPreferences
 import com.example.notavia.ui.NoteAdapter
+import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.navigation.NavigationBarView
 import kotlinx.coroutines.launch
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : NotaviaActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var noteAdapter: NoteAdapter
     private lateinit var repository: NoteRepository
@@ -231,7 +236,7 @@ class MainActivity : AppCompatActivity() {
 
         binding.deleteSelectedButton.setOnClickListener {
             when (selectionMode) {
-                SelectionMode.NOTES -> deleteSelectedNotes()
+                SelectionMode.NOTES -> showDeleteNotesConfirmation()
                 SelectionMode.CATEGORIES -> deleteSelectedCategories()
                 SelectionMode.NONE -> Unit
             }
@@ -753,6 +758,119 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun showDeleteNotesConfirmation() {
+        val count = selectedNoteIds.size
+        if (count == 0) return
+
+        val dialog = BottomSheetDialog(this)
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(24), dp(20), dp(24), dp(16))
+            background = GradientDrawable().apply {
+                setColor(resolveThemeColor(com.google.android.material.R.attr.colorSurfaceContainerLow))
+                cornerRadii = floatArrayOf(
+                    dp(24).toFloat(),
+                    dp(24).toFloat(),
+                    dp(24).toFloat(),
+                    dp(24).toFloat(),
+                    0f,
+                    0f,
+                    0f,
+                    0f,
+                )
+            }
+        }
+
+        container.addView(
+            TextView(this).apply {
+                text = getString(R.string.delete_notes_title)
+                textSize = 18f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnSurface))
+            },
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ),
+        )
+        container.addView(
+            TextView(this).apply {
+                text = resources.getQuantityString(
+                    R.plurals.delete_notes_confirmation_message,
+                    count,
+                    count,
+                )
+                textSize = 15f
+                setTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant))
+            },
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                topMargin = dp(8)
+            },
+        )
+
+        val actionsRow = LinearLayout(this).apply {
+            gravity = Gravity.END or Gravity.CENTER_VERTICAL
+            orientation = LinearLayout.HORIZONTAL
+        }
+        actionsRow.addView(
+            createDeleteDialogButton(
+                text = getString(R.string.cancel_action),
+                textColor = resolveThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant),
+            ) {
+                dialog.dismiss()
+            },
+        )
+        actionsRow.addView(
+            createDeleteDialogButton(
+                text = getString(R.string.delete_confirm_action),
+                textColor = ContextCompat.getColor(this, R.color.priority_high),
+            ) {
+                dialog.dismiss()
+                deleteSelectedNotes()
+            },
+        )
+        container.addView(
+            actionsRow,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                topMargin = dp(18)
+            },
+        )
+
+        dialog.setContentView(container)
+        dialog.setOnShowListener {
+            dialog.findViewById<View>(com.google.android.material.R.id.design_bottom_sheet)
+                ?.setBackgroundColor(Color.TRANSPARENT)
+        }
+        dialog.show()
+    }
+
+    private fun createDeleteDialogButton(
+        text: String,
+        textColor: Int,
+        onClick: () -> Unit,
+    ): MaterialButton {
+        return MaterialButton(this).apply {
+            this.text = text
+            setAllCaps(false)
+            minWidth = 0
+            minHeight = 0
+            insetTop = 0
+            insetBottom = 0
+            backgroundTintList = ColorStateList.valueOf(Color.TRANSPARENT)
+            rippleColor = ColorStateList.valueOf(Color.TRANSPARENT)
+            setTextColor(textColor)
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            installAlphaPressFeedback(this)
+            setOnClickListener { onClick() }
+        }
+    }
+
     private fun deleteSelectedNotes() {
         if (selectedNoteIds.isEmpty()) return
 
@@ -818,6 +936,16 @@ class MainActivity : AppCompatActivity() {
 
     private fun dp(value: Int): Int {
         return (value * resources.displayMetrics.density).toInt()
+    }
+
+    private fun resolveThemeColor(attr: Int): Int {
+        val typedValue = android.util.TypedValue()
+        theme.resolveAttribute(attr, typedValue, true)
+        return if (typedValue.resourceId != 0) {
+            ContextCompat.getColor(this, typedValue.resourceId)
+        } else {
+            typedValue.data
+        }
     }
 
     private fun installAlphaPressFeedback(view: View) {

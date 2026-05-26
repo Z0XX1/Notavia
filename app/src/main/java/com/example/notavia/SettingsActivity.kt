@@ -1,26 +1,37 @@
 package com.example.notavia
 
-import android.content.res.ColorStateList
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
+import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.PopupWindow
+import android.widget.TextView
 import androidx.activity.enableEdgeToEdge
-import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import com.example.notavia.databinding.ActivitySettingsBinding
+import com.example.notavia.settings.AppFontSize
 import com.example.notavia.settings.AppTheme
+import com.example.notavia.settings.AppearancePreferences
 import com.example.notavia.settings.ThemePreferences
 import kotlinx.coroutines.launch
 
-class SettingsActivity : AppCompatActivity() {
+class SettingsActivity : NotaviaActivity() {
     private lateinit var binding: ActivitySettingsBinding
     private lateinit var themePreferences: ThemePreferences
+    private lateinit var appearancePreferences: AppearancePreferences
 
     private var currentTheme: AppTheme = AppTheme.DARK
+    private var currentFontSize: AppFontSize = AppFontSize.MEDIUM
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -35,34 +46,178 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         themePreferences = ThemePreferences(this)
+        appearancePreferences = AppearancePreferences(this)
         setupActions()
-        observeTheme()
+        observeSettings()
     }
 
     private fun setupActions() {
         installAlphaPressFeedback(binding.backButton)
-        installAlphaPressFeedback(binding.lightThemeButton)
-        installAlphaPressFeedback(binding.darkThemeButton)
+        installAlphaPressFeedback(binding.fontSizeRow)
+        installAlphaPressFeedback(binding.themeRow)
 
         binding.backButton.setOnClickListener {
             finish()
         }
 
-        binding.lightThemeButton.setOnClickListener {
-            changeTheme(AppTheme.LIGHT)
+        binding.fontSizeRow.setOnClickListener {
+            showFontSizeMenu()
         }
 
-        binding.darkThemeButton.setOnClickListener {
-            changeTheme(AppTheme.DARK)
+        binding.themeRow.setOnClickListener {
+            showThemeMenu()
         }
     }
 
-    private fun observeTheme() {
+    private fun observeSettings() {
         lifecycleScope.launch {
             themePreferences.themeFlow.collect { theme ->
                 currentTheme = theme
-                updateThemeButtons()
+                updateThemeRow()
             }
+        }
+        lifecycleScope.launch {
+            appearancePreferences.fontSizeFlow.collect { fontSize ->
+                currentFontSize = fontSize
+                updateFontSizeRow()
+            }
+        }
+    }
+
+    private fun showFontSizeMenu() {
+        showSettingsMenu(
+            anchor = binding.fontSizeRow,
+            options = AppFontSize.entries.map { fontSize ->
+                SettingsOption(fontSize, getString(fontSize.labelRes))
+            },
+            selectedValue = currentFontSize,
+        ) { fontSize ->
+            changeFontSize(fontSize)
+        }
+    }
+
+    private fun showThemeMenu() {
+        showSettingsMenu(
+            anchor = binding.themeRow,
+            options = listOf(
+                SettingsOption(AppTheme.DARK, getString(R.string.dark_theme_short)),
+                SettingsOption(AppTheme.LIGHT, getString(R.string.light_theme_short)),
+            ),
+            selectedValue = currentTheme,
+        ) { theme ->
+            changeTheme(theme)
+        }
+    }
+
+    private fun <T> showSettingsMenu(
+        anchor: View,
+        options: List<SettingsOption<T>>,
+        selectedValue: T,
+        onSelected: (T) -> Unit,
+    ) {
+        val popupWidth = dp(252)
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = GradientDrawable().apply {
+                setColor(resolveThemeColor(com.google.android.material.R.attr.colorSurfaceContainerLow))
+                cornerRadius = dp(18).toFloat()
+                setStroke(dp(1), resolveThemeColor(com.google.android.material.R.attr.colorOutline))
+            }
+            clipToOutline = true
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+        }
+
+        var popupWindow: PopupWindow? = null
+        options.forEach { option ->
+            val isSelected = option.value == selectedValue
+            container.addView(
+                createPopupRow(
+                    title = option.title,
+                    isSelected = isSelected,
+                ) {
+                    popupWindow?.dismiss()
+                    onSelected(option.value)
+                },
+            )
+        }
+
+        popupWindow = PopupWindow(
+            container,
+            popupWidth,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            true,
+        ).apply {
+            setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            isOutsideTouchable = true
+            elevation = dp(8).toFloat()
+        }
+
+        val xOffset = (anchor.width - popupWidth).coerceAtLeast(0)
+        popupWindow.showAsDropDown(anchor, xOffset, -dp(4))
+    }
+
+    private fun createPopupRow(
+        title: String,
+        isSelected: Boolean,
+        onClick: () -> Unit,
+    ): View {
+        val selectedBackgroundColor = resolveThemeColor(
+            com.google.android.material.R.attr.colorSurfaceVariant,
+        )
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            isClickable = true
+            isFocusable = true
+            background = if (isSelected) {
+                GradientDrawable().apply {
+                    setColor(selectedBackgroundColor)
+                    cornerRadius = dp(12).toFloat()
+                }
+            } else {
+                ColorDrawable(Color.TRANSPARENT)
+            }
+            setPadding(dp(22), 0, dp(20), 0)
+            installAlphaPressFeedback(this)
+            setOnClickListener {
+                onClick()
+            }
+
+            addView(
+                TextView(this@SettingsActivity).apply {
+                    text = title
+                    textSize = 16f
+                    setTextColor(
+                        if (isSelected) {
+                            ContextCompat.getColor(this@SettingsActivity, R.color.selection_stroke_color)
+                        } else {
+                            resolveThemeColor(com.google.android.material.R.attr.colorOnSurface)
+                        },
+                    )
+                },
+                LinearLayout.LayoutParams(
+                    0,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    1f,
+                ),
+            )
+            addView(
+                ImageView(this@SettingsActivity).apply {
+                    setImageResource(R.drawable.check)
+                    imageTintList = android.content.res.ColorStateList.valueOf(
+                        ContextCompat.getColor(this@SettingsActivity, R.color.selection_stroke_color),
+                    )
+                    visibility = if (isSelected) View.VISIBLE else View.INVISIBLE
+                    contentDescription = null
+                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                },
+                LinearLayout.LayoutParams(dp(28), LinearLayout.LayoutParams.MATCH_PARENT),
+            )
+        }.also { row ->
+            row.layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(56),
+            )
         }
     }
 
@@ -75,44 +230,27 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
-    private fun updateThemeButtons() {
-        val isLight = currentTheme == AppTheme.LIGHT
-        styleThemeButton(binding.lightThemeButton, isActive = isLight)
-        styleThemeButton(binding.darkThemeButton, isActive = !isLight)
+    private fun changeFontSize(fontSize: AppFontSize) {
+        if (fontSize == currentFontSize) return
+
+        lifecycleScope.launch {
+            appearancePreferences.setFontSize(fontSize)
+            recreate()
+        }
     }
 
-    private fun styleThemeButton(
-        button: com.google.android.material.button.MaterialButton,
-        isActive: Boolean,
-    ) {
-        val backgroundColor = ContextCompat.getColor(
-            this,
-            when {
-                isActive && currentTheme == AppTheme.LIGHT -> R.color.theme_preview_light_active_bg
-                isActive && currentTheme == AppTheme.DARK -> R.color.theme_preview_dark_active_bg
-                !isActive && currentTheme == AppTheme.LIGHT -> R.color.theme_preview_light_inactive_bg
-                else -> R.color.theme_preview_dark_inactive_bg
+    private fun updateThemeRow() {
+        binding.themeValueTextView.text = getString(
+            if (currentTheme == AppTheme.DARK) {
+                R.string.dark_theme_short
+            } else {
+                R.string.light_theme_short
             },
         )
-        val textColor = ContextCompat.getColor(
-            this,
-            when {
-                isActive && currentTheme == AppTheme.LIGHT -> R.color.theme_preview_light_active_fg
-                isActive && currentTheme == AppTheme.DARK -> R.color.theme_preview_dark_active_fg
-                !isActive && currentTheme == AppTheme.LIGHT -> R.color.theme_preview_light_inactive_fg
-                else -> R.color.theme_preview_dark_inactive_fg
-            },
-        )
-        val strokeColor = ContextCompat.getColor(
-            this,
-            R.color.note_stroke_color,
-        )
+    }
 
-        button.backgroundTintList = ColorStateList.valueOf(backgroundColor)
-        button.setTextColor(textColor)
-        button.strokeWidth = if (isActive) 0 else 1
-        button.strokeColor = ColorStateList.valueOf(strokeColor)
-        button.alpha = 1f
+    private fun updateFontSizeRow() {
+        binding.fontSizeValueTextView.text = getString(currentFontSize.labelRes)
     }
 
     private fun installAlphaPressFeedback(view: View) {
@@ -127,6 +265,25 @@ class SettingsActivity : AppCompatActivity() {
             false
         }
     }
+
+    private fun resolveThemeColor(attr: Int): Int {
+        val typedValue = android.util.TypedValue()
+        theme.resolveAttribute(attr, typedValue, true)
+        return if (typedValue.resourceId != 0) {
+            ContextCompat.getColor(this, typedValue.resourceId)
+        } else {
+            typedValue.data
+        }
+    }
+
+    private fun dp(value: Int): Int {
+        return (value * resources.displayMetrics.density).toInt()
+    }
+
+    private data class SettingsOption<T>(
+        val value: T,
+        val title: String,
+    )
 
     companion object {
         private const val BUTTON_PRESSED_ALPHA = 0.68f

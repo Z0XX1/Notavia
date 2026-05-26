@@ -2,6 +2,7 @@ package com.example.notavia.ui
 
 import android.content.res.ColorStateList
 import android.view.LayoutInflater
+import android.view.View
 import android.view.ViewGroup
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
@@ -12,8 +13,9 @@ import com.example.notavia.data.Note
 import com.example.notavia.data.NoteCategories
 import com.example.notavia.data.NotePriority
 import com.example.notavia.databinding.ItemNoteBinding
-import java.text.DateFormat
+import java.text.SimpleDateFormat
 import java.util.Date
+import java.util.Locale
 
 class NoteAdapter(
     private val onNoteClicked: (Note) -> Unit,
@@ -49,10 +51,8 @@ class NoteAdapter(
         private val onNoteLongClicked: (Note) -> Unit,
     ) : RecyclerView.ViewHolder(binding.root) {
 
-        private val dateFormatter: DateFormat = DateFormat.getDateTimeInstance(
-            DateFormat.MEDIUM,
-            DateFormat.SHORT,
-        )
+        private val dateFormatter = SimpleDateFormat(UPDATED_AT_PATTERN, Locale.ENGLISH)
+        private val deadlineFormatter = SimpleDateFormat(DEADLINE_DATE_PATTERN, Locale.ENGLISH)
 
         fun bind(note: Note, isSelectionMode: Boolean, isSelected: Boolean) {
             binding.titleTextView.text = note.title.ifBlank {
@@ -64,26 +64,32 @@ class NoteAdapter(
             binding.categoryTextView.text = NoteCategories.display(note.category)
             val priority = NotePriority.fromStorage(note.priority)
             binding.priorityIndicatorImageView.visibility = if (priority == NotePriority.NONE) {
-                android.view.View.GONE
+                View.GONE
             } else {
-                android.view.View.VISIBLE
+                View.VISIBLE
             }
             NotePriorityUi.applyTo(binding.priorityIndicatorImageView, priority)
-            binding.updatedAtTextView.text = binding.root.context.getString(
+            binding.updatedAtTextView.text = note.deadlineAt?.let { deadline ->
+                binding.root.context.getString(
+                    R.string.updated_at_with_deadline_format,
+                    dateFormatter.format(Date(note.updatedAt)),
+                    deadlineFormatter.format(Date(deadline)),
+                )
+            } ?: binding.root.context.getString(
                 R.string.updated_at_format,
                 dateFormatter.format(Date(note.updatedAt)),
             )
 
             binding.pinnedImageView.visibility = if (note.isPinned) {
-                android.view.View.VISIBLE
+                View.VISIBLE
             } else {
-                android.view.View.GONE
+                View.GONE
             }
 
             binding.selectionImageView.visibility = if (isSelectionMode) {
-                android.view.View.VISIBLE
+                View.VISIBLE
             } else {
-                android.view.View.GONE
+                View.GONE
             }
             if (isSelectionMode) {
                 binding.selectionImageView.setImageResource(
@@ -125,5 +131,10 @@ class NoteAdapter(
         override fun areContentsTheSame(oldItem: Note, newItem: Note): Boolean {
             return oldItem == newItem
         }
+    }
+
+    companion object {
+        private const val UPDATED_AT_PATTERN = "MMM d, yyyy h:mma"
+        private const val DEADLINE_DATE_PATTERN = "MMM d, yyyy"
     }
 }

@@ -34,3 +34,27 @@ class ThemePreferences(private val context: Context) {
         val THEME_MODE = stringPreferencesKey("theme_mode")
     }
 }
+
+class AppearancePreferences(private val context: Context) {
+    val fontSizeFlow: Flow<AppFontSize> = context.dataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(androidx.datastore.preferences.core.emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences ->
+            AppFontSize.fromStorage(preferences[Keys.FONT_SIZE])
+        }
+
+    suspend fun setFontSize(fontSize: AppFontSize) {
+        context.dataStore.edit { preferences ->
+            preferences[Keys.FONT_SIZE] = fontSize.storageValue
+        }
+    }
+
+    private object Keys {
+        val FONT_SIZE = stringPreferencesKey("font_size")
+    }
+}

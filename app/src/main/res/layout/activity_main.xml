@@ -36,7 +36,7 @@
             android:id="@+id/settingsButton"
             android:layout_width="48dp"
             android:layout_height="48dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
+            android:background="@android:color/transparent"
             android:contentDescription="@string/settings"
             android:padding="12dp"
             android:src="@drawable/settings"
@@ -61,7 +61,7 @@
             android:id="@+id/closeSelectionButton"
             android:layout_width="48dp"
             android:layout_height="48dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
+            android:background="@android:color/transparent"
             android:contentDescription="@string/close_selection"
             android:padding="15dp"
             android:src="@drawable/close"
@@ -84,7 +84,7 @@
             android:id="@+id/selectAllButton"
             android:layout_width="48dp"
             android:layout_height="48dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
+            android:background="@android:color/transparent"
             android:contentDescription="@string/select_all"
             android:padding="12dp"
             android:src="@drawable/selectall"
@@ -285,6 +285,7 @@
             app:iconGravity="textStart"
             app:iconPadding="6dp"
             app:iconTint="?attr/colorOnSurface"
+            app:rippleColor="@android:color/transparent"
             android:textColor="?attr/colorOnSurface" />
 
         <com.google.android.material.button.MaterialButton
@@ -297,21 +298,22 @@
             app:iconGravity="textStart"
             app:iconPadding="6dp"
             app:iconTint="?attr/colorOnSurface"
+            app:rippleColor="@android:color/transparent"
             android:textColor="?attr/colorOnSurface" />
     </LinearLayout>
 
-    <com.example.notavia.ui.BottomBarCradleView
-        android:id="@+id/bottomNavigationCradleView"
+    <View
+        android:id="@+id/bottomNavigationBackgroundView"
         android:layout_width="0dp"
-        android:layout_height="108dp"
-        android:translationZ="1dp"
+        android:layout_height="96dp"
+        android:background="?attr/colorSurfaceContainerLow"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent" />
 
     <com.google.android.material.bottomnavigation.BottomNavigationView
         android:id="@+id/bottomNavigationView"
-        android:layout_width="0dp"
+        android:layout_width="300dp"
         android:layout_height="wrap_content"
         android:minHeight="72dp"
         android:background="@android:color/transparent"
@@ -332,29 +334,30 @@
     <com.google.android.material.button.MaterialButton
         android:id="@+id/addNoteFab"
         style="@style/Widget.Material3.Button"
-        android:layout_width="64dp"
-        android:layout_height="64dp"
-        android:layout_marginBottom="72dp"
+        android:layout_width="60dp"
+        android:layout_height="60dp"
+        android:layout_marginEnd="20dp"
+        android:layout_marginBottom="116dp"
         android:backgroundTint="?attr/colorPrimary"
         android:contentDescription="@string/add_note"
-        android:elevation="24dp"
+        android:elevation="8dp"
         android:insetTop="0dp"
         android:insetBottom="0dp"
         android:minWidth="0dp"
         android:minHeight="0dp"
         android:padding="0dp"
         android:translationY="0dp"
-        android:translationZ="24dp"
+        android:translationZ="8dp"
         android:visibility="gone"
-        app:cornerRadius="22dp"
+        app:cornerRadius="18dp"
         app:icon="@drawable/addplusbutton"
         app:iconGravity="textStart"
         app:iconPadding="0dp"
-        app:iconSize="29dp"
+        app:iconSize="27dp"
         app:iconTint="?attr/colorOnPrimary"
+        app:rippleColor="@android:color/transparent"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
         tools:visibility="visible" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

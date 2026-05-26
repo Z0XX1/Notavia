@@ -2,6 +2,8 @@ package com.example.notavia
 
 import android.content.res.ColorStateList
 import android.os.Bundle
+import android.view.MotionEvent
+import android.view.View
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
@@ -38,6 +40,10 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun setupActions() {
+        installAlphaPressFeedback(binding.backButton)
+        installAlphaPressFeedback(binding.lightThemeButton)
+        installAlphaPressFeedback(binding.darkThemeButton)
+
         binding.backButton.setOnClickListener {
             finish()
         }
@@ -107,5 +113,22 @@ class SettingsActivity : AppCompatActivity() {
         button.strokeWidth = if (isActive) 0 else 1
         button.strokeColor = ColorStateList.valueOf(strokeColor)
         button.alpha = 1f
+    }
+
+    private fun installAlphaPressFeedback(view: View) {
+        view.setOnTouchListener { pressedView, event ->
+            pressedView.alpha = when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> BUTTON_PRESSED_ALPHA
+                MotionEvent.ACTION_UP,
+                MotionEvent.ACTION_CANCEL,
+                -> 1f
+                else -> pressedView.alpha
+            }
+            false
+        }
+    }
+
+    companion object {
+        private const val BUTTON_PRESSED_ALPHA = 0.68f
     }
 }

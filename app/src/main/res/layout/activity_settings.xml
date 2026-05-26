@@ -24,7 +24,7 @@
             android:id="@+id/backButton"
             android:layout_width="44dp"
             android:layout_height="44dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
+            android:background="@android:color/transparent"
             android:contentDescription="@string/back"
             android:padding="10dp"
             android:src="@drawable/arrowback"
@@ -92,7 +92,8 @@
                     android:layout_height="wrap_content"
                     android:layout_marginEnd="8dp"
                     android:layout_weight="1"
-                    android:text="@string/dark_theme" />
+                    android:text="@string/dark_theme"
+                    app:rippleColor="@android:color/transparent" />
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/lightThemeButton"
@@ -103,6 +104,7 @@
                     android:layout_weight="1"
                     android:text="@string/light_theme"
                     app:backgroundTint="?attr/colorPrimary"
+                    app:rippleColor="@android:color/transparent"
                     android:textColor="?attr/colorOnPrimary" />
             </LinearLayout>
         </LinearLayout>

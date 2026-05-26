@@ -2,6 +2,8 @@ package com.example.notavia
 
 import android.content.Intent
 import android.os.Bundle
+import android.view.MotionEvent
+import android.view.View
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
@@ -46,6 +48,9 @@ class ViewNoteActivity : AppCompatActivity() {
     }
 
     private fun setupActions() {
+        installAlphaPressFeedback(binding.backButton)
+        installAlphaPressFeedback(binding.editButton)
+
         binding.backButton.setOnClickListener {
             finish()
         }
@@ -82,15 +87,15 @@ class ViewNoteActivity : AppCompatActivity() {
         )
         val priority = NotePriority.fromStorage(note.priority)
         binding.priorityIndicatorImageView.visibility = if (priority == NotePriority.NONE) {
-            android.view.View.GONE
+            View.GONE
         } else {
-            android.view.View.VISIBLE
+            View.VISIBLE
         }
         NotePriorityUi.applyTo(binding.priorityIndicatorImageView, priority)
         binding.pinnedBadgeTextView.visibility = if (note.isPinned) {
-            android.view.View.VISIBLE
+            View.VISIBLE
         } else {
-            android.view.View.GONE
+            View.GONE
         }
 
         val textForStats = note.content.trim()
@@ -118,8 +123,22 @@ class ViewNoteActivity : AppCompatActivity() {
         return text.split('\n').size
     }
 
+    private fun installAlphaPressFeedback(view: View) {
+        view.setOnTouchListener { pressedView, event ->
+            pressedView.alpha = when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> BUTTON_PRESSED_ALPHA
+                MotionEvent.ACTION_UP,
+                MotionEvent.ACTION_CANCEL,
+                -> 1f
+                else -> pressedView.alpha
+            }
+            false
+        }
+    }
+
     companion object {
         const val EXTRA_NOTE_ID = "extra_note_id"
         private const val NO_NOTE_ID = -1L
+        private const val BUTTON_PRESSED_ALPHA = 0.68f
     }
 }

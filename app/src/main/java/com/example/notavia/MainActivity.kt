@@ -2,10 +2,11 @@ package com.example.notavia
 
 import android.content.res.ColorStateList
 import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
 import android.text.InputType
-import android.util.TypedValue
 import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
@@ -21,7 +22,6 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.doOnLayout
 import androidx.core.view.isVisible
 import androidx.core.view.updatePadding
 import androidx.core.widget.doAfterTextChanged
@@ -129,17 +129,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupBottomBarLayers() {
-        binding.bottomNavigationCradleView.translationZ = 0f
+        binding.bottomNavigationBackgroundView.translationZ = 0f
         binding.bottomNavigationView.translationZ = dp(1).toFloat()
         binding.addNoteFab.stateListAnimator = null
-        binding.addNoteFab.elevation = dp(24).toFloat()
-        binding.addNoteFab.translationZ = dp(24).toFloat()
+        binding.addNoteFab.elevation = dp(8).toFloat()
+        binding.addNoteFab.translationZ = dp(8).toFloat()
         binding.addNoteFab.bringToFront()
-        binding.bottomNavigationView.doOnLayout { navigationView ->
-            val centerShift = navigationView.width / 30f
-            navigationView.findViewById<View>(R.id.navigation_notes)?.translationX = centerShift
-            navigationView.findViewById<View>(R.id.navigation_checklists)?.translationX = -centerShift
-        }
     }
 
     override fun onResume() {
@@ -176,6 +171,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupActions() {
+        installAlphaPressFeedback(binding.addNoteFab)
+        installAlphaPressFeedback(binding.settingsButton)
+        installAlphaPressFeedback(binding.closeSelectionButton)
+        installAlphaPressFeedback(binding.selectAllButton)
+        installAlphaPressFeedback(binding.pinSelectedButton)
+        installAlphaPressFeedback(binding.deleteSelectedButton)
+
         binding.addNoteFab.setOnClickListener {
             clearSearchFocus()
             openEditor()
@@ -292,8 +294,16 @@ class MainActivity : AppCompatActivity() {
         }
 
         dialog.setOnShowListener {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                submitCategory()
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE).apply {
+                setBackgroundColor(Color.TRANSPARENT)
+                installAlphaPressFeedback(this)
+            }
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).apply {
+                setBackgroundColor(Color.TRANSPARENT)
+                installAlphaPressFeedback(this)
+                setOnClickListener {
+                    submitCategory()
+                }
             }
             input.requestFocus()
             input.post {
@@ -378,7 +388,7 @@ class MainActivity : AppCompatActivity() {
         binding.categoryFilterScrollView.isVisible = showCategoryFilter
         binding.checklistsPlaceholderGroup.isVisible = !isNotesSection
         binding.bottomNavigationView.isVisible = !isSelectionMode
-        binding.bottomNavigationCradleView.isVisible = !isSelectionMode
+        binding.bottomNavigationBackgroundView.isVisible = !isSelectionMode
         binding.selectionActionBar.isVisible = isSelectionMode
 
         binding.notesRecyclerView.isVisible = isNotesSection && hasVisibleNotes
@@ -428,19 +438,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun addCategoryAddButton() {
-        val selectableBackground = TypedValue()
-        theme.resolveAttribute(
-            android.R.attr.selectableItemBackgroundBorderless,
-            selectableBackground,
-            true,
-        )
         val button = AppCompatImageButton(this).apply {
             setImageResource(R.drawable.addplusfilter)
-            background = ContextCompat.getDrawable(this@MainActivity, selectableBackground.resourceId)
+            setBackgroundColor(Color.TRANSPARENT)
             contentDescription = getString(R.string.custom_category_hint)
             scaleType = ImageView.ScaleType.CENTER_INSIDE
             setPadding(dp(8), dp(8), dp(8), dp(8))
             setColorFilter(ContextCompat.getColor(this@MainActivity, R.color.note_stroke_color))
+            installAlphaPressFeedback(this)
             setOnClickListener {
                 clearSearchFocus()
                 showAddCategoryDialog()
@@ -465,6 +470,7 @@ class MainActivity : AppCompatActivity() {
             insetBottom = 0
             cornerRadius = dp(13)
             textSize = 12f
+            rippleColor = ColorStateList.valueOf(Color.TRANSPARENT)
             setPadding(dp(12), 0, dp(12), 0)
             setOnClickListener {
                 if (isCategorySelectionMode) {
@@ -814,6 +820,19 @@ class MainActivity : AppCompatActivity() {
         return (value * resources.displayMetrics.density).toInt()
     }
 
+    private fun installAlphaPressFeedback(view: View) {
+        view.setOnTouchListener { pressedView, event ->
+            pressedView.alpha = when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> BUTTON_PRESSED_ALPHA
+                MotionEvent.ACTION_UP,
+                MotionEvent.ACTION_CANCEL,
+                -> 1f
+                else -> pressedView.alpha
+            }
+            false
+        }
+    }
+
     private enum class MainSection {
         NOTES,
         CHECKLISTS,
@@ -823,6 +842,10 @@ class MainActivity : AppCompatActivity() {
         NONE,
         NOTES,
         CATEGORIES,
+    }
+
+    companion object {
+        private const val BUTTON_PRESSED_ALPHA = 0.68f
     }
 }
 

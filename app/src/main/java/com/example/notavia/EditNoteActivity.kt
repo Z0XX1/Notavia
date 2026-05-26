@@ -107,6 +107,8 @@ class EditNoteActivity : AppCompatActivity() {
     }
 
     private fun setupActions() {
+        installAlphaPressFeedback(binding.backButton)
+
         binding.backButton.setOnClickListener {
             finishAfterAutoSave()
         }
@@ -195,21 +197,15 @@ class EditNoteActivity : AppCompatActivity() {
         priority: NotePriority,
         onClick: () -> Unit,
     ): View {
-        val selectableBackground = TypedValue()
-        theme.resolveAttribute(
-            android.R.attr.selectableItemBackground,
-            selectableBackground,
-            true,
-        )
-
         return LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             isClickable = true
             isFocusable = true
             minimumWidth = dp(166)
-            background = ContextCompat.getDrawable(this@EditNoteActivity, selectableBackground.resourceId)
+            background = ColorDrawable(Color.TRANSPARENT)
             setPadding(dp(14), dp(10), dp(16), dp(10))
+            installAlphaPressFeedback(this)
             setOnClickListener { onClick() }
 
             addView(
@@ -312,8 +308,16 @@ class EditNoteActivity : AppCompatActivity() {
         }
 
         dialog.setOnShowListener {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                submitCategory()
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE).apply {
+                setBackgroundColor(Color.TRANSPARENT)
+                installAlphaPressFeedback(this)
+            }
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).apply {
+                setBackgroundColor(Color.TRANSPARENT)
+                installAlphaPressFeedback(this)
+                setOnClickListener {
+                    submitCategory()
+                }
             }
             input.requestFocus()
             input.post {
@@ -374,19 +378,14 @@ class EditNoteActivity : AppCompatActivity() {
     }
 
     private fun addCategoryAddButton() {
-        val selectableBackground = TypedValue()
-        theme.resolveAttribute(
-            android.R.attr.selectableItemBackgroundBorderless,
-            selectableBackground,
-            true,
-        )
         val button = AppCompatImageButton(this).apply {
             setImageResource(R.drawable.addplusfilter)
-            background = ContextCompat.getDrawable(this@EditNoteActivity, selectableBackground.resourceId)
+            setBackgroundColor(Color.TRANSPARENT)
             contentDescription = getString(R.string.custom_category_hint)
             scaleType = ImageView.ScaleType.CENTER_INSIDE
             setPadding(dp(7), dp(7), dp(7), dp(7))
             setColorFilter(ContextCompat.getColor(this@EditNoteActivity, R.color.note_stroke_color))
+            installAlphaPressFeedback(this)
             setOnClickListener {
                 showAddCategoryDialog()
             }
@@ -410,6 +409,7 @@ class EditNoteActivity : AppCompatActivity() {
             insetBottom = 0
             cornerRadius = dp(15)
             textSize = 13f
+            rippleColor = ColorStateList.valueOf(Color.TRANSPARENT)
             setPadding(dp(14), 0, dp(14), 0)
             setOnClickListener {
                 toggleCategory(category)
@@ -711,6 +711,19 @@ class EditNoteActivity : AppCompatActivity() {
         return (value * resources.displayMetrics.density).toInt()
     }
 
+    private fun installAlphaPressFeedback(view: View) {
+        view.setOnTouchListener { pressedView, event ->
+            pressedView.alpha = when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> BUTTON_PRESSED_ALPHA
+                MotionEvent.ACTION_UP,
+                MotionEvent.ACTION_CANCEL,
+                -> 1f
+                else -> pressedView.alpha
+            }
+            false
+        }
+    }
+
     private fun resolveThemeColor(attr: Int): Int {
         val typedValue = TypedValue()
         theme.resolveAttribute(attr, typedValue, true)
@@ -726,6 +739,7 @@ class EditNoteActivity : AppCompatActivity() {
         private const val NO_NOTE_ID = -1L
         private const val AUTO_SAVE_DELAY_MS = 450L
         private const val PRIORITY_BUTTON_PRESSED_ALPHA = 0.68f
+        private const val BUTTON_PRESSED_ALPHA = 0.68f
     }
 
     private data class NoteDraft(

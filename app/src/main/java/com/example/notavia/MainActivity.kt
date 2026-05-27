@@ -3,6 +3,7 @@ package com.example.notavia
 import android.content.res.ColorStateList
 import android.content.Intent
 import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
@@ -14,8 +15,11 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.PopupWindow
+import android.widget.ScrollView
 import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
@@ -33,11 +37,14 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.notavia.data.Note
 import com.example.notavia.data.NoteCategories
+import com.example.notavia.data.NotePriority
 import com.example.notavia.data.NoteRepository
 import com.example.notavia.data.NotaviaDatabase
 import com.example.notavia.databinding.ActivityMainBinding
 import com.example.notavia.settings.CategoryPreferences
 import com.example.notavia.ui.NoteAdapter
+import com.example.notavia.ui.NotePriorityUi
+import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -60,7 +67,10 @@ class MainActivity : NotaviaActivity() {
     private val customCategoryNames = linkedSetOf<String>()
     private var selectionMode: SelectionMode = SelectionMode.NONE
     private var searchQuery: String = ""
-    private var selectedCategoryFilter: String? = null
+    private val selectedCategoryFilters = linkedSetOf<String>()
+    private val selectedPriorityFilters = linkedSetOf<NotePriority>()
+    private val selectedDeadlineFilters = linkedSetOf<DeadlineFilter>()
+    private val selectedSortOptions = linkedMapOf<SortGroup, NoteSortOption>()
     private val categoryFilterButtons = linkedMapOf<String?, MaterialButton>()
     private val isSelectionMode: Boolean
         get() = selectionMode != SelectionMode.NONE
@@ -182,6 +192,8 @@ class MainActivity : NotaviaActivity() {
         installAlphaPressFeedback(binding.selectAllButton)
         installAlphaPressFeedback(binding.pinSelectedButton)
         installAlphaPressFeedback(binding.deleteSelectedButton)
+        installAlphaPressFeedback(binding.filterButton)
+        installAlphaPressFeedback(binding.sortButton)
 
         binding.addNoteFab.setOnClickListener {
             clearSearchFocus()
@@ -191,6 +203,16 @@ class MainActivity : NotaviaActivity() {
         binding.settingsButton.setOnClickListener {
             clearSearchFocus()
             startActivity(Intent(this, SettingsActivity::class.java))
+        }
+
+        binding.filterButton.setOnClickListener {
+            clearSearchFocus()
+            showFilterSheet()
+        }
+
+        binding.sortButton.setOnClickListener {
+            clearSearchFocus()
+            showSortSheet()
         }
 
         binding.searchEditText.doAfterTextChanged { editable ->
@@ -363,11 +385,22 @@ class MainActivity : NotaviaActivity() {
         visibleNotes = allNotes.filter { note ->
             val matchesSearch = searchQuery.isBlank() ||
                 note.title.contains(searchQuery, ignoreCase = true)
-            val matchesCategory = selectedCategoryFilter == null ||
-                NoteCategories.contains(note.category, selectedCategoryFilter.orEmpty())
+            val matchesCategory = selectedCategoryFilters.isEmpty() ||
+                selectedCategoryFilters.any { category ->
+                    NoteCategories.contains(note.category, category)
+                }
+            val matchesPriority = selectedPriorityFilters.isEmpty() ||
+                NotePriority.fromStorage(note.priority) in selectedPriorityFilters
+            val matchesDeadline = selectedDeadlineFilters.isEmpty() ||
+                selectedDeadlineFilters.any { deadlineFilter ->
+                    when (deadlineFilter) {
+                        DeadlineFilter.WITH_DEADLINE -> note.deadlineAt != null
+                        DeadlineFilter.WITHOUT_DEADLINE -> note.deadlineAt == null
+                    }
+                }
 
-            matchesSearch && matchesCategory
-        }
+            matchesSearch && matchesCategory && matchesPriority && matchesDeadline
+        }.sortForCurrentMode()
 
         if (selectedNoteIds.isNotEmpty()) {
             val existingIds = allNotes.map { it.id }.toSet()
@@ -389,6 +422,7 @@ class MainActivity : NotaviaActivity() {
         )
         binding.defaultTopBar.isVisible = !isSelectionMode
         binding.selectionTopBar.isVisible = isSelectionMode
+        binding.searchActionsRow.isVisible = showSearch
         binding.searchCardView.isVisible = showSearch
         binding.categoryFilterScrollView.isVisible = showCategoryFilter
         binding.checklistsPlaceholderGroup.isVisible = !isNotesSection
@@ -406,6 +440,7 @@ class MainActivity : NotaviaActivity() {
         }
 
         updateEmptyState()
+        updateFilterSortButtons()
         updateSelectionControls()
         renderCategoryFilters()
         noteAdapter.updateSelectionState(isNoteSelectionMode, selectedNoteIds)
@@ -414,13 +449,107 @@ class MainActivity : NotaviaActivity() {
     private fun updateEmptyState() {
         if (currentSection != MainSection.NOTES) return
 
-        val hasSearch = searchQuery.isNotBlank() || selectedCategoryFilter != null
+        val hasSearch = searchQuery.isNotBlank() || hasActiveFilters()
         binding.emptyTitleTextView.text = getString(
             if (hasSearch) R.string.empty_search_title else R.string.empty_state_title,
         )
         binding.emptyMessageTextView.text = getString(
             if (hasSearch) R.string.empty_search_message else R.string.empty_state_message,
         )
+    }
+
+    private fun updateFilterSortButtons() {
+        val filtersActive = hasActiveFilters()
+        binding.filterButton.setImageResource(
+            if (filtersActive) R.drawable.filter else R.drawable.filteroff,
+        )
+        binding.filterButton.imageTintList = ColorStateList.valueOf(
+            if (filtersActive) {
+                ContextCompat.getColor(this, R.color.selection_stroke_color)
+            } else {
+                resolveThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant)
+            },
+        )
+        binding.sortButton.imageTintList = ColorStateList.valueOf(
+            if (selectedSortOptions.isNotEmpty()) {
+                ContextCompat.getColor(this, R.color.selection_stroke_color)
+            } else {
+                resolveThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant)
+            },
+        )
+    }
+
+    private fun hasActiveFilters(): Boolean {
+        return selectedCategoryFilters.isNotEmpty() ||
+            selectedPriorityFilters.isNotEmpty() ||
+            selectedDeadlineFilters.isNotEmpty()
+    }
+
+    private fun List<Note>.sortForCurrentMode(): List<Note> {
+        return sortedWith { first, second ->
+            comparePinned(first, second)
+                .takeIf { it != 0 }
+                ?: compareByCurrentSort(first, second)
+        }
+    }
+
+    private fun comparePinned(first: Note, second: Note): Int {
+        return when {
+            first.isPinned == second.isPinned -> 0
+            first.isPinned -> -1
+            else -> 1
+        }
+    }
+
+    private fun compareByCurrentSort(first: Note, second: Note): Int {
+        val sortOptions = selectedSortOptions.values.toList()
+            .ifEmpty { listOf(NoteSortOption.CREATED_NEWEST) }
+
+        sortOptions.forEach { sortOption ->
+            val optionCompare = compareBySortOption(first, second, sortOption)
+            if (optionCompare != 0) {
+                return optionCompare
+            }
+        }
+        return second.updatedAt.compareTo(first.updatedAt)
+    }
+
+    private fun compareBySortOption(first: Note, second: Note, sortOption: NoteSortOption): Int {
+        return when (sortOption) {
+            NoteSortOption.CREATED_NEWEST -> second.createdAt.compareTo(first.createdAt)
+            NoteSortOption.CREATED_OLDEST -> first.createdAt.compareTo(second.createdAt)
+            NoteSortOption.PRIORITY_HIGH_FIRST -> compareValues(
+                prioritySortRank(first, lowPriorityFirst = false),
+                prioritySortRank(second, lowPriorityFirst = false),
+            )
+            NoteSortOption.PRIORITY_LOW_FIRST -> compareValues(
+                prioritySortRank(first, lowPriorityFirst = true),
+                prioritySortRank(second, lowPriorityFirst = true),
+            )
+            NoteSortOption.DEADLINE_NEAREST -> compareDeadlines(first, second, nearestFirst = true)
+            NoteSortOption.DEADLINE_FARTHEST -> compareDeadlines(first, second, nearestFirst = false)
+        }
+    }
+
+    private fun prioritySortRank(note: Note, lowPriorityFirst: Boolean): Int {
+        return when (NotePriority.fromStorage(note.priority)) {
+            NotePriority.HIGH -> if (lowPriorityFirst) 2 else 0
+            NotePriority.MEDIUM -> 1
+            NotePriority.LOW -> if (lowPriorityFirst) 0 else 2
+            NotePriority.NONE -> 3
+        }
+    }
+
+    private fun compareDeadlines(first: Note, second: Note, nearestFirst: Boolean): Int {
+        val firstDeadline = first.deadlineAt
+        val secondDeadline = second.deadlineAt
+        return when {
+            firstDeadline == null && secondDeadline == null -> 0
+            firstDeadline == null -> 1
+            secondDeadline == null -> -1
+            nearestFirst -> firstDeadline.compareTo(secondDeadline)
+            else -> secondDeadline.compareTo(firstDeadline)
+        }
     }
 
     private fun renderCategoryFilters() {
@@ -483,7 +612,8 @@ class MainActivity : NotaviaActivity() {
                         category?.let { toggleCategorySelection(it) }
                     }
                 } else {
-                    selectedCategoryFilter = category
+                    selectedCategoryFilters.clear()
+                    category?.let { selectedCategoryFilters.add(NoteCategories.normalize(it)) }
                     clearSearchFocus()
                     applySearchFilter()
                 }
@@ -516,7 +646,11 @@ class MainActivity : NotaviaActivity() {
                     !isProtectedCategory(category) &&
                     selectedCategoryNames.contains(category)
             } else {
-                category == selectedCategoryFilter
+                if (category == null) {
+                    selectedCategoryFilters.isEmpty()
+                } else {
+                    selectedCategoryFilters.contains(category)
+                }
             }
             styleCategoryFilterButton(
                 button,
@@ -564,16 +698,623 @@ class MainActivity : NotaviaActivity() {
         )
     }
 
-    private fun resetMissingCategoryFilter() {
-        val selectedCategory = selectedCategoryFilter ?: return
-        val normalizedCategory = NoteCategories.normalize(selectedCategory)
-        val isStandardCategory = NoteCategories.isStandard(normalizedCategory)
-        val isCustomCategory = customCategoryNames.contains(normalizedCategory)
-        val hasNotesInCategory = allNotes.any { note ->
-            NoteCategories.contains(note.category, normalizedCategory)
+    private fun showFilterSheet() {
+        val dialog = BottomSheetDialog(this)
+        val content = createBottomSheetContainer()
+        val filterRowRefreshers = mutableListOf<() -> Unit>()
+        val onFilterChanged = {
+            applySearchFilter()
+            filterRowRefreshers.forEach { refreshRow ->
+                refreshRow()
+            }
         }
-        if (!isStandardCategory && !isCustomCategory && !hasNotesInCategory) {
-            selectedCategoryFilter = null
+
+        content.addView(createBottomSheetTitle(getString(R.string.filters_title)))
+        content.addView(createBottomSheetSectionTitle(getString(R.string.filter_priority_title)))
+        content.addView(
+            createSheetOptionRow(
+                title = getString(R.string.filter_any),
+                isSelected = { selectedPriorityFilters.isEmpty() },
+                registerSelectionUpdater = filterRowRefreshers::add,
+            ) {
+                selectedPriorityFilters.clear()
+                onFilterChanged()
+            },
+        )
+        listOf(
+            NotePriority.NONE,
+            NotePriority.HIGH,
+            NotePriority.MEDIUM,
+            NotePriority.LOW,
+        ).forEach { priority ->
+            content.addView(
+                createPriorityFilterRow(priority, filterRowRefreshers::add) {
+                    togglePriorityFilter(priority)
+                    onFilterChanged()
+                },
+            )
+        }
+
+        content.addView(createBottomSheetSectionTitle(getString(R.string.filter_deadline_title)))
+        content.addView(
+            createSheetOptionRow(
+                title = getString(R.string.filter_any),
+                isSelected = { selectedDeadlineFilters.isEmpty() },
+                registerSelectionUpdater = filterRowRefreshers::add,
+            ) {
+                selectedDeadlineFilters.clear()
+                onFilterChanged()
+            },
+        )
+        DeadlineFilter.entries.forEach { deadlineFilter ->
+            content.addView(
+                createSheetOptionRow(
+                    title = deadlineFilter.title(),
+                    isSelected = { selectedDeadlineFilters.contains(deadlineFilter) },
+                    registerSelectionUpdater = filterRowRefreshers::add,
+                ) {
+                    toggleDeadlineFilter(deadlineFilter)
+                    onFilterChanged()
+                },
+            )
+        }
+
+        content.addView(createBottomSheetSectionTitle(getString(R.string.filter_category_title)))
+        content.addView(
+            createSheetOptionRow(
+                title = getString(R.string.filter_any),
+                isSelected = { selectedCategoryFilters.isEmpty() },
+                registerSelectionUpdater = filterRowRefreshers::add,
+            ) {
+                selectedCategoryFilters.clear()
+                onFilterChanged()
+            },
+        )
+        availableCategoryFilters().forEach { category ->
+            content.addView(
+                createSheetOptionRow(
+                    title = category,
+                    isSelected = { selectedCategoryFilters.contains(category) },
+                    registerSelectionUpdater = filterRowRefreshers::add,
+                ) {
+                    toggleCategoryFilter(category)
+                    onFilterChanged()
+                },
+            )
+        }
+
+        content.addView(
+            createResetFiltersButton {
+                selectedPriorityFilters.clear()
+                selectedDeadlineFilters.clear()
+                selectedCategoryFilters.clear()
+                dialog.dismiss()
+                applySearchFilter()
+            },
+        )
+
+        val filterSheetHeight = resources.displayMetrics.heightPixels / 2
+        dialog.setContentView(wrapBottomSheetContent(content, fixedHeight = filterSheetHeight))
+        styleBottomSheet(dialog, fixedHeight = filterSheetHeight)
+        dialog.show()
+    }
+
+    private fun showSortSheet() {
+        val dialog = BottomSheetDialog(this)
+        val content = createBottomSheetContainer()
+        val sortRowRefreshers = mutableListOf<() -> Unit>()
+        val onSortChanged = {
+            applySearchFilter()
+            sortRowRefreshers.forEach { refreshRow ->
+                refreshRow()
+            }
+        }
+
+        content.addView(createBottomSheetTitle(getString(R.string.sort_title)))
+        content.addView(createBottomSheetSectionTitle(getString(R.string.sort_by_created)))
+        content.addView(createSortChoiceRow(SortGroup.CREATED, sortRowRefreshers::add, onSortChanged))
+
+        content.addView(createBottomSheetSectionTitle(getString(R.string.sort_by_priority)))
+        content.addView(createSortChoiceRow(SortGroup.PRIORITY, sortRowRefreshers::add, onSortChanged))
+
+        content.addView(createBottomSheetSectionTitle(getString(R.string.sort_by_deadline)))
+        content.addView(createSortChoiceRow(SortGroup.DEADLINE, sortRowRefreshers::add, onSortChanged))
+
+        content.addView(
+            createResetFiltersButton {
+                selectedSortOptions.clear()
+                dialog.dismiss()
+                applySearchFilter()
+            },
+        )
+
+        val sortSheetHeight = resources.displayMetrics.heightPixels / 2
+        dialog.setContentView(wrapBottomSheetContent(content, fixedHeight = sortSheetHeight))
+        styleBottomSheet(dialog, fixedHeight = sortSheetHeight)
+        dialog.show()
+    }
+
+    private fun createSortChoiceRow(
+        group: SortGroup,
+        registerSelectionUpdater: ((() -> Unit) -> Unit)? = null,
+        onSelectionChanged: () -> Unit,
+    ): View {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            isClickable = true
+            isFocusable = true
+            minimumHeight = dp(58)
+            setPadding(0, 0, dp(8), 0)
+            installAlphaPressFeedback(this)
+
+            addView(
+                TextView(this@MainActivity).apply {
+                    text = getString(R.string.sort_first_label)
+                    textSize = 16f
+                    typeface = Typeface.DEFAULT_BOLD
+                    setTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnSurface))
+                },
+                LinearLayout.LayoutParams(
+                    0,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    1f,
+                ),
+            )
+
+            val valueTextView = TextView(this@MainActivity).apply {
+                text = selectedSortOptions[group]?.title() ?: getString(R.string.sort_none)
+                textSize = 16f
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                setTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant))
+            }
+            addView(
+                valueTextView,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                ),
+            )
+
+            addView(
+                ImageView(this@MainActivity).apply {
+                    setImageResource(R.drawable.unfold)
+                    imageTintList = ColorStateList.valueOf(
+                        resolveThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant),
+                    )
+                    contentDescription = null
+                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                    setPadding(dp(8), dp(8), dp(8), dp(8))
+                },
+                LinearLayout.LayoutParams(dp(36), dp(36)),
+            )
+
+            val refreshValue = {
+                valueTextView.text = selectedSortOptions[group]?.title() ?: getString(R.string.sort_none)
+            }
+            registerSelectionUpdater?.invoke(refreshValue)
+
+            setOnClickListener {
+                showSortChoiceMenu(this, group) {
+                    onSelectionChanged()
+                }
+            }
+        }
+    }
+
+    private fun showSortChoiceMenu(
+        anchor: View,
+        group: SortGroup,
+        onSelected: () -> Unit,
+    ) {
+        val popupWidth = dp(252)
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = GradientDrawable().apply {
+                setColor(resolveThemeColor(com.google.android.material.R.attr.colorSurfaceContainerLow))
+                cornerRadius = dp(18).toFloat()
+                setStroke(dp(1), resolveThemeColor(com.google.android.material.R.attr.colorOutline))
+            }
+            clipToOutline = true
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+        }
+
+        var popupWindow: PopupWindow? = null
+        sortChoicesForGroup(group).forEach { choice ->
+            container.addView(
+                createSortPopupRow(
+                    title = choice.title,
+                    isSelected = selectedSortOptions[group] == choice.option,
+                ) {
+                    popupWindow?.dismiss()
+                    if (choice.option == null) {
+                        selectedSortOptions.remove(group)
+                    } else {
+                        selectedSortOptions[group] = choice.option
+                    }
+                    onSelected()
+                },
+            )
+        }
+
+        popupWindow = PopupWindow(
+            container,
+            popupWidth,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            true,
+        ).apply {
+            setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            isOutsideTouchable = true
+            elevation = dp(8).toFloat()
+        }
+
+        val xOffset = (anchor.width - popupWidth).coerceAtLeast(0)
+        container.measure(
+            View.MeasureSpec.makeMeasureSpec(popupWidth, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+        )
+        val anchorLocation = IntArray(2)
+        anchor.getLocationOnScreen(anchorLocation)
+        val availableBelow = resources.displayMetrics.heightPixels -
+            anchorLocation[1] -
+            anchor.height
+        val yOffset = if (availableBelow < container.measuredHeight + dp(8)) {
+            -anchor.height - container.measuredHeight - dp(4)
+        } else {
+            -dp(4)
+        }
+        popupWindow.showAsDropDown(anchor, xOffset, yOffset)
+    }
+
+    private fun createSortPopupRow(
+        title: String,
+        isSelected: Boolean,
+        onClick: () -> Unit,
+    ): View {
+        val selectedBackgroundColor = resolveThemeColor(
+            com.google.android.material.R.attr.colorSurfaceVariant,
+        )
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            isClickable = true
+            isFocusable = true
+            background = if (isSelected) {
+                GradientDrawable().apply {
+                    setColor(selectedBackgroundColor)
+                    cornerRadius = dp(12).toFloat()
+                }
+            } else {
+                ColorDrawable(Color.TRANSPARENT)
+            }
+            setPadding(dp(22), 0, dp(20), 0)
+            installAlphaPressFeedback(this)
+            setOnClickListener {
+                onClick()
+            }
+
+            addView(
+                TextView(this@MainActivity).apply {
+                    text = title
+                    textSize = 16f
+                    setTextColor(
+                        if (isSelected) {
+                            ContextCompat.getColor(this@MainActivity, R.color.selection_stroke_color)
+                        } else {
+                            resolveThemeColor(com.google.android.material.R.attr.colorOnSurface)
+                        },
+                    )
+                },
+                LinearLayout.LayoutParams(
+                    0,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    1f,
+                ),
+            )
+            addView(
+                ImageView(this@MainActivity).apply {
+                    setImageResource(R.drawable.check)
+                    imageTintList = ColorStateList.valueOf(
+                        ContextCompat.getColor(this@MainActivity, R.color.selection_stroke_color),
+                    )
+                    visibility = if (isSelected) View.VISIBLE else View.INVISIBLE
+                    contentDescription = null
+                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                },
+                LinearLayout.LayoutParams(dp(28), LinearLayout.LayoutParams.MATCH_PARENT),
+            )
+        }.also { row ->
+            row.layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(56),
+            )
+        }
+    }
+
+    private fun sortChoicesForGroup(group: SortGroup): List<SortChoice> {
+        return when (group) {
+            SortGroup.CREATED -> listOf(
+                SortChoice(null, getString(R.string.sort_none)),
+                SortChoice(NoteSortOption.CREATED_NEWEST, getString(R.string.sort_created_new)),
+                SortChoice(NoteSortOption.CREATED_OLDEST, getString(R.string.sort_created_old)),
+            )
+            SortGroup.PRIORITY -> listOf(
+                SortChoice(null, getString(R.string.sort_none)),
+                SortChoice(NoteSortOption.PRIORITY_HIGH_FIRST, getString(R.string.sort_priority_high)),
+                SortChoice(NoteSortOption.PRIORITY_LOW_FIRST, getString(R.string.sort_priority_low)),
+            )
+            SortGroup.DEADLINE -> listOf(
+                SortChoice(null, getString(R.string.sort_none)),
+                SortChoice(NoteSortOption.DEADLINE_NEAREST, getString(R.string.sort_deadline_near)),
+                SortChoice(NoteSortOption.DEADLINE_FARTHEST, getString(R.string.sort_deadline_far)),
+            )
+        }
+    }
+
+    private fun togglePriorityFilter(priority: NotePriority) {
+        if (!selectedPriorityFilters.add(priority)) {
+            selectedPriorityFilters.remove(priority)
+        }
+    }
+
+    private fun toggleDeadlineFilter(deadlineFilter: DeadlineFilter) {
+        if (!selectedDeadlineFilters.add(deadlineFilter)) {
+            selectedDeadlineFilters.remove(deadlineFilter)
+        }
+    }
+
+    private fun toggleCategoryFilter(category: String) {
+        val normalizedCategory = NoteCategories.normalize(category)
+        if (!selectedCategoryFilters.add(normalizedCategory)) {
+            selectedCategoryFilters.remove(normalizedCategory)
+        }
+    }
+
+    private fun createBottomSheetContainer(): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(24), dp(22), dp(24), dp(18))
+        }
+    }
+
+    private fun wrapBottomSheetContent(content: View, fixedHeight: Int? = null): View {
+        val root = FrameLayout(this).apply {
+            background = bottomSheetBackground()
+            clipChildren = false
+            clipToPadding = false
+            fixedHeight?.let { height ->
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    height,
+                )
+            }
+        }
+        val scrollView = ScrollView(this).apply {
+            isFillViewport = false
+            clipToPadding = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+            addView(
+                content,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ),
+            )
+        }
+        root.addView(
+            scrollView,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                fixedHeight ?: FrameLayout.LayoutParams.WRAP_CONTENT,
+            ),
+        )
+        return root
+    }
+
+    private fun bottomSheetBackground(): GradientDrawable {
+        return GradientDrawable().apply {
+            setColor(resolveThemeColor(com.google.android.material.R.attr.colorSurfaceContainerLow))
+            cornerRadii = floatArrayOf(
+                dp(24).toFloat(),
+                dp(24).toFloat(),
+                dp(24).toFloat(),
+                dp(24).toFloat(),
+                0f,
+                0f,
+                0f,
+                0f,
+            )
+        }
+    }
+
+    private fun styleBottomSheet(dialog: BottomSheetDialog, fixedHeight: Int? = null) {
+        dialog.setOnShowListener {
+            val bottomSheet = dialog.findViewById<FrameLayout>(
+                com.google.android.material.R.id.design_bottom_sheet,
+            )
+            bottomSheet?.apply {
+                setBackgroundColor(Color.TRANSPARENT)
+                clipChildren = false
+                clipToPadding = false
+                fixedHeight?.let { height ->
+                    layoutParams = layoutParams.apply {
+                        this.height = height
+                    }
+                    val behavior = BottomSheetBehavior.from(this)
+                    behavior.peekHeight = height
+                    behavior.state = BottomSheetBehavior.STATE_COLLAPSED
+                    behavior.isDraggable = false
+                }
+            }
+        }
+    }
+
+    private fun createBottomSheetTitle(title: String): TextView {
+        return TextView(this).apply {
+            text = title
+            textSize = 20f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnSurface))
+        }
+    }
+
+    private fun createBottomSheetSectionTitle(title: String): TextView {
+        return TextView(this).apply {
+            text = title
+            textSize = 13f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                topMargin = dp(18)
+                bottomMargin = dp(6)
+            }
+        }
+    }
+
+    private fun createPriorityFilterRow(
+        priority: NotePriority,
+        registerSelectionUpdater: ((() -> Unit) -> Unit)? = null,
+        onClick: () -> Unit,
+    ): View {
+        val priorityDot = ImageView(this).apply {
+            setImageResource(R.drawable.circle)
+            NotePriorityUi.applyTo(this, priority)
+            contentDescription = null
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
+        return createSheetOptionRow(
+            title = getString(NotePriorityUi.labelRes(priority)),
+            isSelected = { selectedPriorityFilters.contains(priority) },
+            leadingView = priorityDot,
+            registerSelectionUpdater = registerSelectionUpdater,
+            onClick = onClick,
+        )
+    }
+
+    private fun createSheetOptionRow(
+        title: String,
+        isSelected: () -> Boolean,
+        leadingView: View? = null,
+        registerSelectionUpdater: ((() -> Unit) -> Unit)? = null,
+        onClick: () -> Unit,
+    ): View {
+        val selectedBackgroundColor = resolveThemeColor(
+            com.google.android.material.R.attr.colorSurfaceVariant,
+        )
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            isClickable = true
+            isFocusable = true
+            minimumHeight = dp(48)
+            setPadding(dp(14), dp(8), dp(12), dp(8))
+            installAlphaPressFeedback(this)
+
+            leadingView?.let { view ->
+                addView(
+                    view,
+                    LinearLayout.LayoutParams(dp(18), dp(18)).apply {
+                        marginEnd = dp(12)
+                    },
+                )
+            }
+            addView(
+                TextView(this@MainActivity).apply {
+                    text = title
+                    textSize = 16f
+                    setTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnSurface))
+                },
+                LinearLayout.LayoutParams(
+                    0,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    1f,
+                ),
+            )
+            addView(
+                ImageView(this@MainActivity).apply {
+                    setImageResource(R.drawable.check)
+                    imageTintList = ColorStateList.valueOf(
+                        ContextCompat.getColor(this@MainActivity, R.color.selection_stroke_color),
+                    )
+                    visibility = View.INVISIBLE
+                    contentDescription = null
+                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                },
+                LinearLayout.LayoutParams(dp(28), dp(28)),
+            )
+            fun updateSelectionStyle() {
+                val selected = isSelected()
+                background = if (selected) {
+                    GradientDrawable().apply {
+                        setColor(selectedBackgroundColor)
+                        cornerRadius = dp(14).toFloat()
+                    }
+                } else {
+                    null
+                }
+                (getChildAt(childCount - 2) as? TextView)?.setTextColor(
+                    if (selected) {
+                        ContextCompat.getColor(this@MainActivity, R.color.selection_stroke_color)
+                    } else {
+                        resolveThemeColor(com.google.android.material.R.attr.colorOnSurface)
+                    },
+                )
+                getChildAt(childCount - 1).visibility = if (selected) View.VISIBLE else View.INVISIBLE
+            }
+            updateSelectionStyle()
+            registerSelectionUpdater?.invoke {
+                updateSelectionStyle()
+            }
+            setOnClickListener {
+                onClick()
+                updateSelectionStyle()
+            }
+        }
+    }
+
+    private fun createResetFiltersButton(onClick: () -> Unit): MaterialButton {
+        return MaterialButton(this).apply {
+            text = getString(R.string.filter_reset_action)
+            setAllCaps(false)
+            minWidth = 0
+            minHeight = 0
+            insetTop = 0
+            insetBottom = 0
+            backgroundTintList = ColorStateList.valueOf(Color.TRANSPARENT)
+            rippleColor = ColorStateList.valueOf(Color.TRANSPARENT)
+            setTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant))
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            installAlphaPressFeedback(this)
+            setOnClickListener { onClick() }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                gravity = Gravity.END
+                topMargin = dp(16)
+            }
+        }
+    }
+
+    private fun resetMissingCategoryFilter() {
+        if (selectedCategoryFilters.isEmpty()) return
+        val existingFilters = selectedCategoryFilters.filterTo(linkedSetOf()) { category ->
+            val normalizedCategory = NoteCategories.normalize(category)
+            val isStandardCategory = NoteCategories.isStandard(normalizedCategory)
+            val isCustomCategory = customCategoryNames.contains(normalizedCategory)
+            val hasNotesInCategory = allNotes.any { note ->
+                NoteCategories.contains(note.category, normalizedCategory)
+            }
+
+            isStandardCategory || isCustomCategory || hasNotesInCategory
+        }
+        if (existingFilters.size != selectedCategoryFilters.size) {
+            selectedCategoryFilters.clear()
+            selectedCategoryFilters.addAll(existingFilters)
         }
     }
 
@@ -601,8 +1342,8 @@ class MainActivity : NotaviaActivity() {
             categoryPreferences.hiddenCategoriesFlow.collect { categories ->
                 hiddenCategoryNames.clear()
                 hiddenCategoryNames.addAll(categories)
-                if (selectedCategoryFilter != null && hiddenCategoryNames.contains(selectedCategoryFilter)) {
-                    selectedCategoryFilter = null
+                val changedFilters = selectedCategoryFilters.removeAll(hiddenCategoryNames)
+                if (changedFilters) {
                     applySearchFilter()
                 } else {
                     renderUi()
@@ -905,9 +1646,7 @@ class MainActivity : NotaviaActivity() {
             categoryPreferences.setPinnedCategories(pinnedCategoryNames)
             categoryPreferences.setCustomCategories(customCategoryNames)
             categoryPreferences.setHiddenCategories(hiddenCategoryNames)
-            if (selectedCategoryFilter != null && categoriesToDelete.contains(selectedCategoryFilter)) {
-                selectedCategoryFilter = null
-            }
+            selectedCategoryFilters.removeAll(categoriesToDelete)
             exitSelectionMode()
             loadNotes()
         }
@@ -961,6 +1700,24 @@ class MainActivity : NotaviaActivity() {
         }
     }
 
+    private fun DeadlineFilter.title(): String {
+        return when (this) {
+            DeadlineFilter.WITH_DEADLINE -> getString(R.string.filter_deadline_with)
+            DeadlineFilter.WITHOUT_DEADLINE -> getString(R.string.filter_deadline_without)
+        }
+    }
+
+    private fun NoteSortOption.title(): String {
+        return when (this) {
+            NoteSortOption.CREATED_NEWEST -> getString(R.string.sort_created_new)
+            NoteSortOption.CREATED_OLDEST -> getString(R.string.sort_created_old)
+            NoteSortOption.PRIORITY_HIGH_FIRST -> getString(R.string.sort_priority_high)
+            NoteSortOption.PRIORITY_LOW_FIRST -> getString(R.string.sort_priority_low)
+            NoteSortOption.DEADLINE_NEAREST -> getString(R.string.sort_deadline_near)
+            NoteSortOption.DEADLINE_FARTHEST -> getString(R.string.sort_deadline_far)
+        }
+    }
+
     private enum class MainSection {
         NOTES,
         CHECKLISTS,
@@ -971,6 +1728,31 @@ class MainActivity : NotaviaActivity() {
         NOTES,
         CATEGORIES,
     }
+
+    private enum class DeadlineFilter {
+        WITH_DEADLINE,
+        WITHOUT_DEADLINE,
+    }
+
+    private enum class SortGroup {
+        CREATED,
+        PRIORITY,
+        DEADLINE,
+    }
+
+    private enum class NoteSortOption(val group: SortGroup) {
+        CREATED_NEWEST(SortGroup.CREATED),
+        CREATED_OLDEST(SortGroup.CREATED),
+        PRIORITY_HIGH_FIRST(SortGroup.PRIORITY),
+        PRIORITY_LOW_FIRST(SortGroup.PRIORITY),
+        DEADLINE_NEAREST(SortGroup.DEADLINE),
+        DEADLINE_FARTHEST(SortGroup.DEADLINE),
+    }
+
+    private data class SortChoice(
+        val option: NoteSortOption?,
+        val title: String,
+    )
 
     companion object {
         private const val BUTTON_PRESSED_ALPHA = 0.68f

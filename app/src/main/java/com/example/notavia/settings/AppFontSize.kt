@@ -8,9 +8,9 @@ enum class AppFontSize(
     val fontScale: Float,
     @StringRes val labelRes: Int,
 ) {
-    SMALL("small", 0.9f, R.string.font_size_small),
+    SMALL("small", 0.81f, R.string.font_size_small),
     MEDIUM("medium", 1f, R.string.font_size_medium),
-    LARGE("large", 1.12f, R.string.font_size_large);
+    LARGE("large", 1.23f, R.string.font_size_large);
 
     companion object {
         fun fromStorage(value: String?): AppFontSize {

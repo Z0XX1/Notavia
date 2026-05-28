@@ -55,6 +55,28 @@
             android:textStyle="bold" />
 
         <androidx.appcompat.widget.AppCompatImageButton
+            android:id="@+id/selectAllChecklistItemsButton"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:background="@android:color/transparent"
+            android:contentDescription="@string/select_all"
+            android:padding="10dp"
+            android:src="@drawable/selectall"
+            android:visibility="gone"
+            app:tint="?attr/colorOnBackground" />
+
+        <androidx.appcompat.widget.AppCompatImageButton
+            android:id="@+id/deleteChecklistItemsButton"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:background="@android:color/transparent"
+            android:contentDescription="@string/delete_action"
+            android:padding="10dp"
+            android:src="@drawable/delete"
+            android:visibility="gone"
+            app:tint="?attr/colorOnBackground" />
+
+        <androidx.appcompat.widget.AppCompatImageButton
             android:id="@+id/editButton"
             android:layout_width="44dp"
             android:layout_height="44dp"

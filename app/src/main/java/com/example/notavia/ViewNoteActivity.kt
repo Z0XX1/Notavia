@@ -29,6 +29,8 @@ import com.example.notavia.data.NoteType
 import com.example.notavia.data.NotaviaDatabase
 import com.example.notavia.databinding.ActivityViewNoteBinding
 import com.example.notavia.ui.NotePriorityUi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -42,6 +44,11 @@ class ViewNoteActivity : NotaviaActivity() {
     private var currentNote: Note? = null
     private var currentNoteType: NoteType = NoteType.NOTE
     private val checklistItems = mutableListOf<ChecklistItem>()
+    private val selectedChecklistItemIndexes = linkedSetOf<Int>()
+    private var autoSaveDelayJob: Job? = null
+    private var autoSaveJob: Job? = null
+    private var pendingSaveAfterCurrent: Boolean = false
+    private var isApplyingLoadedNote: Boolean = false
     private val deadlineFormatter: SimpleDateFormat by lazy {
         SimpleDateFormat(DEADLINE_DATE_PATTERN, RUSSIAN_LOCALE)
     }
@@ -69,13 +76,24 @@ class ViewNoteActivity : NotaviaActivity() {
         loadNote()
     }
 
+    override fun onPause() {
+        flushChecklistAutoSave()
+        super.onPause()
+    }
+
     private fun setupActions() {
         installAlphaPressFeedback(binding.backButton)
         installAlphaPressFeedback(binding.saveButton)
         installAlphaPressFeedback(binding.editButton)
+        installAlphaPressFeedback(binding.selectAllChecklistItemsButton)
+        installAlphaPressFeedback(binding.deleteChecklistItemsButton)
 
         binding.backButton.setOnClickListener {
-            finish()
+            if (isChecklistSelectionMode()) {
+                exitChecklistSelectionMode()
+            } else {
+                finish()
+            }
         }
 
         binding.saveButton.setOnClickListener {
@@ -88,6 +106,28 @@ class ViewNoteActivity : NotaviaActivity() {
                 putExtra(EditNoteActivity.EXTRA_NOTE_ID, noteId)
             }
             startActivity(intent)
+        }
+
+        binding.selectAllChecklistItemsButton.setOnClickListener {
+            if (selectedChecklistItemIndexes.size == checklistItems.size) {
+                selectedChecklistItemIndexes.clear()
+            } else {
+                selectedChecklistItemIndexes.clear()
+                selectedChecklistItemIndexes.addAll(checklistItems.indices)
+            }
+            renderChecklistItems()
+            updateChecklistTopBar()
+        }
+
+        binding.deleteChecklistItemsButton.setOnClickListener {
+            deleteSelectedChecklistItems()
+        }
+
+        binding.titleTextView.doAfterTextChanged {
+            if (currentNoteType == NoteType.CHECKLIST && !isApplyingLoadedNote) {
+                binding.screenTitleTextView.text = checklistTitle()
+                scheduleChecklistAutoSave()
+            }
         }
     }
 
@@ -129,13 +169,77 @@ class ViewNoteActivity : NotaviaActivity() {
         }
     }
 
+    private fun scheduleChecklistAutoSave() {
+        if (isApplyingLoadedNote || currentNoteType != NoteType.CHECKLIST) return
+
+        autoSaveDelayJob?.cancel()
+        autoSaveDelayJob = lifecycleScope.launch {
+            delay(AUTO_SAVE_DELAY_MS)
+            requestChecklistAutoSaveNow()
+        }
+    }
+
+    private fun requestChecklistAutoSaveNow() {
+        if (currentNoteType != NoteType.CHECKLIST) return
+
+        if (autoSaveJob?.isActive == true) {
+            pendingSaveAfterCurrent = true
+            return
+        }
+
+        autoSaveJob = lifecycleScope.launch {
+            do {
+                pendingSaveAfterCurrent = false
+                persistChecklist()
+            } while (pendingSaveAfterCurrent)
+        }
+    }
+
+    private suspend fun persistChecklist() {
+        val note = currentNote ?: return
+        if (currentNoteType != NoteType.CHECKLIST) return
+
+        val updatedNote = note.copy(
+            title = binding.titleTextView.text?.toString()?.trim().orEmpty(),
+            content = ChecklistContent.serialize(checklistItems),
+            category = NoteCategories.DEFAULT,
+            priority = NotePriority.NONE.storageValue,
+            deadlineAt = null,
+            updatedAt = System.currentTimeMillis(),
+        )
+        repository.saveNote(updatedNote)
+        currentNote = updatedNote
+    }
+
+    private fun flushChecklistAutoSave() {
+        autoSaveDelayJob?.cancel()
+        if (autoSaveJob?.isActive == true) {
+            pendingSaveAfterCurrent = true
+            return
+        }
+        if (currentNoteType == NoteType.CHECKLIST) {
+            autoSaveJob = lifecycleScope.launch {
+                persistChecklist()
+            }
+        }
+    }
+
     private fun bindNote(note: Note) {
+        isApplyingLoadedNote = true
         val noteType = NoteType.fromStorage(note.type)
         currentNote = note
         currentNoteType = noteType
         val isChecklist = noteType == NoteType.CHECKLIST
-        binding.saveButton.visibility = if (isChecklist) View.VISIBLE else View.GONE
+        selectedChecklistItemIndexes.clear()
+        binding.screenTitleTextView.text = if (isChecklist) {
+            note.title.ifBlank { getString(R.string.untitled_note) }
+        } else {
+            getString(R.string.view_note_title)
+        }
+        binding.saveButton.visibility = View.GONE
         binding.editButton.visibility = if (isChecklist) View.GONE else View.VISIBLE
+        binding.selectAllChecklistItemsButton.visibility = View.GONE
+        binding.deleteChecklistItemsButton.visibility = View.GONE
         binding.titleTextView.isFocusable = isChecklist
         binding.titleTextView.isFocusableInTouchMode = isChecklist
         binding.titleTextView.isCursorVisible = isChecklist
@@ -185,6 +289,7 @@ class ViewNoteActivity : NotaviaActivity() {
             }
             NotePriorityUi.applyTo(binding.priorityIndicatorImageView, priority)
         }
+        isApplyingLoadedNote = false
         binding.pinnedBadgeTextView.visibility = if (note.isPinned) {
             View.VISIBLE
         } else {
@@ -230,13 +335,7 @@ class ViewNoteActivity : NotaviaActivity() {
         if (indexedItems.isEmpty()) return
 
         binding.checklistItemsContainer.addView(
-            TextView(this).apply {
-                text = title
-                textSize = 14f
-                typeface = Typeface.DEFAULT_BOLD
-                setTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant))
-                setPadding(0, 14.dp, 0, 4.dp)
-            },
+            createSectionHeader(title),
         )
 
         indexedItems.forEach { (index, item) ->
@@ -244,19 +343,41 @@ class ViewNoteActivity : NotaviaActivity() {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = android.view.Gravity.CENTER_VERTICAL
                 setPadding(0, 4.dp, 0, 4.dp)
+                alpha = if (item.isDone) COMPLETED_ITEM_ALPHA else 1f
+                setOnClickListener {
+                    if (isChecklistSelectionMode()) {
+                        toggleChecklistItemSelection(index)
+                    }
+                }
+                setOnLongClickListener {
+                    enterChecklistSelectionMode(index)
+                    true
+                }
             }
 
             row.addView(
                 AppCompatImageButton(this).apply {
-                    setImageResource(if (item.isDone) R.drawable.checkbox else R.drawable.emptybox)
+                    setImageResource(
+                        when {
+                            selectedChecklistItemIndexes.contains(index) -> R.drawable.checkcircle
+                            isChecklistSelectionMode() -> R.drawable.emptycircle
+                            item.isDone -> R.drawable.checkbox
+                            else -> R.drawable.emptybox
+                        },
+                    )
                     background = android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT)
                     setColorFilter(resolveThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant))
                     contentDescription = item.text
                     setPadding(10.dp, 10.dp, 10.dp, 10.dp)
                     installAlphaPressFeedback(this)
                     setOnClickListener {
-                        checklistItems[index] = item.copy(isDone = !item.isDone)
-                        renderChecklistItems()
+                        if (isChecklistSelectionMode()) {
+                            toggleChecklistItemSelection(index)
+                        } else {
+                            checklistItems[index] = item.copy(isDone = !item.isDone)
+                            renderChecklistItems()
+                            scheduleChecklistAutoSave()
+                        }
                     }
                 },
                 LinearLayout.LayoutParams(44.dp, 44.dp),
@@ -269,6 +390,7 @@ class ViewNoteActivity : NotaviaActivity() {
                     background = android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT)
                     inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
                     maxLines = 2
+                    isEnabled = !isChecklistSelectionMode()
                     setTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnBackground))
                     setHintTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant))
                     paintFlags = if (item.isDone) {
@@ -283,6 +405,11 @@ class ViewNoteActivity : NotaviaActivity() {
                     }
                     doAfterTextChanged { editable ->
                         updateChecklistItemText(index, editable?.toString().orEmpty())
+                        scheduleChecklistAutoSave()
+                    }
+                    setOnLongClickListener {
+                        enterChecklistSelectionMode(index)
+                        true
                     }
                 },
                 LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f),
@@ -298,7 +425,100 @@ class ViewNoteActivity : NotaviaActivity() {
         }
     }
 
+    private fun createSectionHeader(title: String): View {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(0, 14.dp, 0, 4.dp)
+
+            addView(
+                TextView(this@ViewNoteActivity).apply {
+                    text = title
+                    textSize = 14f
+                    typeface = Typeface.DEFAULT_BOLD
+                    setTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant))
+                },
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                ),
+            )
+            addView(
+                View(this@ViewNoteActivity).apply {
+                    alpha = 0.5f
+                    setBackgroundColor(resolveThemeColor(com.google.android.material.R.attr.colorOutline))
+                },
+                LinearLayout.LayoutParams(0, 1.dp, 1f).apply {
+                    marginStart = 12.dp
+                },
+            )
+        }
+    }
+
+    private fun isChecklistSelectionMode(): Boolean {
+        return selectedChecklistItemIndexes.isNotEmpty()
+    }
+
+    private fun enterChecklistSelectionMode(index: Int) {
+        selectedChecklistItemIndexes.add(index)
+        renderChecklistItems()
+        updateChecklistTopBar()
+    }
+
+    private fun toggleChecklistItemSelection(index: Int) {
+        if (selectedChecklistItemIndexes.contains(index)) {
+            selectedChecklistItemIndexes.remove(index)
+        } else {
+            selectedChecklistItemIndexes.add(index)
+        }
+
+        if (selectedChecklistItemIndexes.isEmpty()) {
+            exitChecklistSelectionMode()
+        } else {
+            renderChecklistItems()
+            updateChecklistTopBar()
+        }
+    }
+
+    private fun exitChecklistSelectionMode() {
+        selectedChecklistItemIndexes.clear()
+        renderChecklistItems()
+        updateChecklistTopBar()
+    }
+
+    private fun updateChecklistTopBar() {
+        val isSelectionMode = isChecklistSelectionMode()
+        binding.screenTitleTextView.text = if (isSelectionMode) {
+            getString(R.string.selected_count_format, selectedChecklistItemIndexes.size)
+        } else {
+            checklistTitle()
+        }
+        binding.selectAllChecklistItemsButton.visibility = if (isSelectionMode) View.VISIBLE else View.GONE
+        binding.deleteChecklistItemsButton.visibility = if (isSelectionMode) View.VISIBLE else View.GONE
+    }
+
+    private fun deleteSelectedChecklistItems() {
+        val indexesToDelete = selectedChecklistItemIndexes.sortedDescending()
+        indexesToDelete.forEach { index ->
+            if (index in checklistItems.indices) {
+                checklistItems.removeAt(index)
+            }
+        }
+        selectedChecklistItemIndexes.clear()
+        renderChecklistItems()
+        updateChecklistTopBar()
+        scheduleChecklistAutoSave()
+    }
+
+    private fun checklistTitle(): String {
+        return binding.titleTextView.text?.toString()?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?: getString(R.string.untitled_note)
+    }
+
     private fun addChecklistInputRow() {
+        if (isChecklistSelectionMode()) return
+
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER_VERTICAL
@@ -306,7 +526,7 @@ class ViewNoteActivity : NotaviaActivity() {
         }
 
         val input = AppCompatEditText(this).apply {
-            hint = getString(R.string.checklist_item_hint)
+            hint = getString(R.string.checklist_item_number_hint, checklistItems.size + 1)
             imeOptions = EditorInfo.IME_ACTION_DONE
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
             maxLines = 1
@@ -349,6 +569,7 @@ class ViewNoteActivity : NotaviaActivity() {
 
         checklistItems.add(ChecklistItem(text = text))
         renderChecklistItems()
+        scheduleChecklistAutoSave()
     }
 
     private fun updateChecklistItemText(index: Int, text: String) {
@@ -395,7 +616,9 @@ class ViewNoteActivity : NotaviaActivity() {
     companion object {
         const val EXTRA_NOTE_ID = "extra_note_id"
         private const val NO_NOTE_ID = -1L
+        private const val AUTO_SAVE_DELAY_MS = 450L
         private const val BUTTON_PRESSED_ALPHA = 0.68f
+        private const val COMPLETED_ITEM_ALPHA = 0.45f
         private const val DEADLINE_DATE_PATTERN = "d MMM yyyy"
         private val RUSSIAN_LOCALE: Locale = Locale.forLanguageTag("ru")
     }

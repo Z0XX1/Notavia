@@ -214,6 +214,7 @@ class EditNoteActivity : NotaviaActivity() {
             isDeadlinePickerExpanded = false
         }
         if (isChecklist) {
+            updateChecklistInputHint()
             renderChecklistItems()
         }
     }
@@ -224,8 +225,16 @@ class EditNoteActivity : NotaviaActivity() {
 
         checklistItems.add(ChecklistItem(text = text))
         binding.checklistItemEditText.text?.clear()
+        updateChecklistInputHint()
         renderChecklistItems()
         scheduleAutoSave()
+    }
+
+    private fun updateChecklistInputHint() {
+        binding.checklistItemEditText.hint = getString(
+            R.string.checklist_item_number_hint,
+            checklistItems.size + 1,
+        )
     }
 
     private fun renderChecklistItems() {
@@ -312,10 +321,11 @@ class EditNoteActivity : NotaviaActivity() {
             setColorFilter(resolveThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant))
             installAlphaPressFeedback(this)
             setOnClickListener {
-                checklistItems.removeAt(index)
-                renderChecklistItems()
-                scheduleAutoSave()
-            }
+                    checklistItems.removeAt(index)
+                    updateChecklistInputHint()
+                    renderChecklistItems()
+                    scheduleAutoSave()
+                }
         }
         row.addView(deleteButton, LinearLayout.LayoutParams(dp(44), dp(44)))
 
@@ -878,6 +888,7 @@ class EditNoteActivity : NotaviaActivity() {
                 if (selectedNoteType == NoteType.CHECKLIST) {
                     checklistItems.clear()
                     checklistItems.addAll(ChecklistContent.parse(note.content))
+                    updateChecklistInputHint()
                     renderChecklistItems()
                 } else {
                     binding.contentEditText.setText(note.content)

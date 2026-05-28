@@ -100,6 +100,7 @@
     <string name="deadline_clear">&#x411;&#x435;&#x437; &#x434;&#x435;&#x434;&#x43B;&#x430;&#x439;&#x43D;&#x430;</string>
     <string name="deadline_format">&#x414;&#x435;&#x434;&#x43B;&#x430;&#x439;&#x43D;: %1$s</string>
     <string name="checklist_item_hint">&#x41F;&#x443;&#x43D;&#x43A;&#x442; &#x447;&#x435;&#x43A;-&#x43B;&#x438;&#x441;&#x442;&#x430;</string>
+    <string name="checklist_item_number_hint">&#x41F;&#x443;&#x43D;&#x43A;&#x442; %1$d</string>
     <string name="add_checklist_item">&#x414;&#x43E;&#x431;&#x430;&#x432;&#x438;&#x442;&#x44C; &#x43F;&#x443;&#x43D;&#x43A;&#x442;</string>
     <string name="checklist_incomplete_title">&#x41D;&#x435;&#x437;&#x430;&#x432;&#x435;&#x440;&#x448;&#x451;&#x43D;&#x43D;&#x44B;&#x435;</string>
     <string name="checklist_completed_title">&#x417;&#x430;&#x432;&#x435;&#x440;&#x448;&#x451;&#x43D;&#x43D;&#x44B;&#x435;</string>

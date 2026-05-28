@@ -1,17 +1,24 @@
 package com.example.notavia.ui
 
 import android.content.res.ColorStateList
+import android.graphics.Paint
+import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import androidx.core.content.ContextCompat
 import com.example.notavia.R
+import com.example.notavia.data.ChecklistContent
 import com.example.notavia.data.Note
 import com.example.notavia.data.NoteCategories
 import com.example.notavia.data.NotePriority
+import com.example.notavia.data.NoteType
 import com.example.notavia.databinding.ItemNoteBinding
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -58,10 +65,24 @@ class NoteAdapter(
             binding.titleTextView.text = note.title.ifBlank {
                 binding.root.context.getString(R.string.untitled_note)
             }
-            binding.contentTextView.text = note.content.ifBlank {
-                binding.root.context.getString(R.string.empty_note_preview)
+            val noteType = NoteType.fromStorage(note.type)
+            if (noteType == NoteType.CHECKLIST) {
+                binding.contentTextView.visibility = View.GONE
+                binding.checklistPreviewContainer.visibility = View.VISIBLE
+                renderChecklistPreview(note.content)
+            } else {
+                binding.contentTextView.visibility = View.VISIBLE
+                binding.checklistPreviewContainer.visibility = View.GONE
+                binding.contentTextView.text = note.content.ifBlank {
+                    binding.root.context.getString(R.string.empty_note_preview)
+                }
             }
             binding.categoryTextView.text = NoteCategories.display(note.category)
+            binding.categoryTextView.visibility = if (noteType == NoteType.CHECKLIST) {
+                View.GONE
+            } else {
+                View.VISIBLE
+            }
             val priority = NotePriority.fromStorage(note.priority)
             binding.priorityIndicatorImageView.visibility = if (priority == NotePriority.NONE) {
                 View.GONE
@@ -121,6 +142,69 @@ class NoteAdapter(
                 true
             }
         }
+
+        private fun renderChecklistPreview(content: String) {
+            binding.checklistPreviewContainer.removeAllViews()
+            val context = binding.root.context
+            val items = ChecklistContent.parse(content).take(MAX_CHECKLIST_PREVIEW_ITEMS)
+
+            if (items.isEmpty()) {
+                binding.contentTextView.visibility = View.VISIBLE
+                binding.checklistPreviewContainer.visibility = View.GONE
+                binding.contentTextView.text = context.getString(R.string.empty_checklist_preview)
+                return
+            }
+
+            items.forEach { item ->
+                val row = LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(0, 1.dp, 0, 1.dp)
+                }
+
+                row.addView(
+                    ImageView(context).apply {
+                        setImageResource(if (item.isDone) R.drawable.checkbox else R.drawable.emptybox)
+                        setColorFilter(
+                            ContextCompat.getColor(context, R.color.note_stroke_color),
+                        )
+                        contentDescription = null
+                    },
+                    LinearLayout.LayoutParams(16.dp, 16.dp).apply {
+                        marginEnd = 6.dp
+                    },
+                )
+
+                row.addView(
+                    TextView(context).apply {
+                        text = item.text
+                        maxLines = 1
+                        ellipsize = android.text.TextUtils.TruncateAt.END
+                        textSize = 13f
+                        setTextColor(
+                            ContextCompat.getColor(context, R.color.note_stroke_color),
+                        )
+                        paintFlags = if (item.isDone) {
+                            paintFlags or Paint.STRIKE_THRU_TEXT_FLAG
+                        } else {
+                            paintFlags and Paint.STRIKE_THRU_TEXT_FLAG.inv()
+                        }
+                    },
+                    LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f),
+                )
+
+                binding.checklistPreviewContainer.addView(
+                    row,
+                    LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                    ),
+                )
+            }
+        }
+
+        private val Int.dp: Int
+            get() = (this * binding.root.resources.displayMetrics.density).toInt()
     }
 
     class NoteDiffCallback : DiffUtil.ItemCallback<Note>() {
@@ -136,5 +220,6 @@ class NoteAdapter(
     companion object {
         private const val UPDATED_AT_PATTERN = "MMM d, yyyy h:mma"
         private const val DEADLINE_DATE_PATTERN = "MMM d, yyyy"
+        private const val MAX_CHECKLIST_PREVIEW_ITEMS = 3
     }
 }

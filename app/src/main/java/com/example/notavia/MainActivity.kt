@@ -39,6 +39,7 @@ import com.example.notavia.data.Note
 import com.example.notavia.data.NoteCategories
 import com.example.notavia.data.NotePriority
 import com.example.notavia.data.NoteRepository
+import com.example.notavia.data.NoteType
 import com.example.notavia.data.NotaviaDatabase
 import com.example.notavia.databinding.ActivityMainBinding
 import com.example.notavia.settings.CategoryPreferences
@@ -230,8 +231,9 @@ class MainActivity : NotaviaActivity() {
                 }
                 if (currentSection != MainSection.NOTES) {
                     exitSelectionMode()
+                    clearChecklistOnlyControls()
                 }
-                renderUi()
+                applySearchFilter()
                 true
             },
         )
@@ -383,6 +385,7 @@ class MainActivity : NotaviaActivity() {
         resetMissingCategoryFilter()
 
         visibleNotes = allNotes.filter { note ->
+            val matchesSection = NoteType.fromStorage(note.type) == currentSection.noteType
             val matchesSearch = searchQuery.isBlank() ||
                 note.title.contains(searchQuery, ignoreCase = true)
             val matchesCategory = selectedCategoryFilters.isEmpty() ||
@@ -399,7 +402,7 @@ class MainActivity : NotaviaActivity() {
                     }
                 }
 
-            matchesSearch && matchesCategory && matchesPriority && matchesDeadline
+            matchesSection && matchesSearch && matchesCategory && matchesPriority && matchesDeadline
         }.sortForCurrentMode()
 
         if (selectedNoteIds.isNotEmpty()) {
@@ -425,14 +428,14 @@ class MainActivity : NotaviaActivity() {
         binding.searchActionsRow.isVisible = showSearch
         binding.searchCardView.isVisible = showSearch
         binding.categoryFilterScrollView.isVisible = showCategoryFilter
-        binding.checklistsPlaceholderGroup.isVisible = !isNotesSection
+        binding.checklistsPlaceholderGroup.isVisible = false
         binding.bottomNavigationView.isVisible = !isSelectionMode
         binding.bottomNavigationBackgroundView.isVisible = !isSelectionMode
         binding.selectionActionBar.isVisible = isSelectionMode
 
-        binding.notesRecyclerView.isVisible = isNotesSection && hasVisibleNotes
-        binding.emptyStateGroup.isVisible = isNotesSection && !hasVisibleNotes
-        binding.addNoteFab.isVisible = isNotesSection && !isSelectionMode
+        binding.notesRecyclerView.isVisible = hasVisibleNotes
+        binding.emptyStateGroup.isVisible = !hasVisibleNotes
+        binding.addNoteFab.isVisible = !isSelectionMode
         binding.addNoteFab.bringToFront()
 
         if (isSelectionMode) {
@@ -447,18 +450,26 @@ class MainActivity : NotaviaActivity() {
     }
 
     private fun updateEmptyState() {
-        if (currentSection != MainSection.NOTES) return
-
         val hasSearch = searchQuery.isNotBlank() || hasActiveFilters()
         binding.emptyTitleTextView.text = getString(
-            if (hasSearch) R.string.empty_search_title else R.string.empty_state_title,
+            when {
+                hasSearch -> R.string.empty_search_title
+                currentSection == MainSection.CHECKLISTS -> R.string.empty_checklists_title
+                else -> R.string.empty_state_title
+            },
         )
         binding.emptyMessageTextView.text = getString(
-            if (hasSearch) R.string.empty_search_message else R.string.empty_state_message,
+            when {
+                hasSearch -> R.string.empty_search_message
+                currentSection == MainSection.CHECKLISTS -> R.string.empty_checklists_message
+                else -> R.string.empty_state_message
+            },
         )
     }
 
     private fun updateFilterSortButtons() {
+        if (currentSection != MainSection.NOTES) return
+
         val filtersActive = hasActiveFilters()
         binding.filterButton.setImageResource(
             if (filtersActive) R.drawable.filter else R.drawable.filteroff,
@@ -1319,7 +1330,10 @@ class MainActivity : NotaviaActivity() {
     }
 
     private fun availableCategoryFilters(): List<String> {
-        return NoteCategories.availableFrom(allNotes, pinnedCategoryNames, customCategoryNames)
+        val sectionNotes = allNotes.filter { note ->
+            NoteType.fromStorage(note.type) == currentSection.noteType
+        }
+        return NoteCategories.availableFrom(sectionNotes, pinnedCategoryNames, customCategoryNames)
             .filterNot { it != NoteCategories.DEFAULT && hiddenCategoryNames.contains(it) }
     }
 
@@ -1662,8 +1676,19 @@ class MainActivity : NotaviaActivity() {
     private fun openEditor(noteId: Long? = null) {
         val intent = Intent(this, EditNoteActivity::class.java).apply {
             noteId?.let { putExtra(EditNoteActivity.EXTRA_NOTE_ID, it) }
+            putExtra(EditNoteActivity.EXTRA_NOTE_TYPE, currentSection.noteType.storageValue)
         }
         startActivity(intent)
+    }
+
+    private fun clearChecklistOnlyControls() {
+        searchQuery = ""
+        binding.searchEditText.text?.clear()
+        selectedCategoryFilters.clear()
+        selectedPriorityFilters.clear()
+        selectedDeadlineFilters.clear()
+        selectedSortOptions.clear()
+        clearSearchFocus()
     }
 
     private fun clearSearchFocus() {
@@ -1718,9 +1743,9 @@ class MainActivity : NotaviaActivity() {
         }
     }
 
-    private enum class MainSection {
-        NOTES,
-        CHECKLISTS,
+    private enum class MainSection(val noteType: NoteType) {
+        NOTES(NoteType.NOTE),
+        CHECKLISTS(NoteType.CHECKLIST),
     }
 
     private enum class SelectionMode {

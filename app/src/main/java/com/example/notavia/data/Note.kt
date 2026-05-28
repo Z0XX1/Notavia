@@ -15,6 +15,8 @@ data class Note(
     val priority: String = NotePriority.NONE.storageValue,
     @ColumnInfo(defaultValue = "NULL")
     val deadlineAt: Long? = null,
+    @ColumnInfo(defaultValue = "'note'")
+    val type: String = NoteType.NOTE.storageValue,
     val createdAt: Long,
     val updatedAt: Long,
     val isPinned: Boolean = false,

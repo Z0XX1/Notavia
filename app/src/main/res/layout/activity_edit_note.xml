@@ -257,6 +257,55 @@
                 android:textColor="?attr/colorOnBackground"
                 android:textColorHint="?attr/colorOnSurfaceVariant"
                 android:textSize="18sp" />
+
+            <LinearLayout
+                android:id="@+id/checklistEditorGroup"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <androidx.appcompat.widget.AppCompatEditText
+                        android:id="@+id/checklistItemEditText"
+                        android:layout_width="0dp"
+                        android:layout_height="44dp"
+                        android:layout_weight="1"
+                        android:background="@android:color/transparent"
+                        android:hint="@string/checklist_item_hint"
+                        android:imeOptions="actionDone"
+                        android:inputType="textCapSentences"
+                        android:maxLines="1"
+                        android:padding="0dp"
+                        android:textColor="?attr/colorOnBackground"
+                        android:textColorHint="?attr/colorOnSurfaceVariant"
+                        android:textSize="18sp" />
+
+                    <androidx.appcompat.widget.AppCompatImageButton
+                        android:id="@+id/addChecklistItemButton"
+                        android:layout_width="44dp"
+                        android:layout_height="44dp"
+                        android:layout_marginStart="8dp"
+                        android:background="@android:color/transparent"
+                        android:contentDescription="@string/add_checklist_item"
+                        android:padding="10dp"
+                        android:src="@drawable/addplusbutton"
+                        app:tint="?attr/colorPrimary" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/checklistItemsContainer"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:orientation="vertical" />
+            </LinearLayout>
         </LinearLayout>
     </ScrollView>
 

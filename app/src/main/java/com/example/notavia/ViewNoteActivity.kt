@@ -1,16 +1,20 @@
 package com.example.notavia
 
 import android.content.Intent
+import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.text.InputType
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.widget.AppCompatEditText
 import androidx.appcompat.widget.AppCompatImageButton
@@ -29,6 +33,8 @@ import com.example.notavia.data.NoteType
 import com.example.notavia.data.NotaviaDatabase
 import com.example.notavia.databinding.ActivityViewNoteBinding
 import com.example.notavia.ui.NotePriorityUi
+import com.google.android.material.bottomsheet.BottomSheetDialog
+import com.google.android.material.button.MaterialButton
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -69,6 +75,7 @@ class ViewNoteActivity : NotaviaActivity() {
         noteId = intent.getLongExtra(EXTRA_NOTE_ID, NO_NOTE_ID)
 
         setupActions()
+        setupBackHandling()
     }
 
     override fun onResume() {
@@ -87,6 +94,7 @@ class ViewNoteActivity : NotaviaActivity() {
         installAlphaPressFeedback(binding.editButton)
         installAlphaPressFeedback(binding.selectAllChecklistItemsButton)
         installAlphaPressFeedback(binding.deleteChecklistItemsButton)
+        installAlphaPressFeedback(binding.deleteChecklistSelectionButton)
 
         binding.backButton.setOnClickListener {
             if (isChecklistSelectionMode()) {
@@ -120,15 +128,31 @@ class ViewNoteActivity : NotaviaActivity() {
         }
 
         binding.deleteChecklistItemsButton.setOnClickListener {
-            deleteSelectedChecklistItems()
+            showDeleteChecklistItemsConfirmation()
+        }
+
+        binding.deleteChecklistSelectionButton.setOnClickListener {
+            showDeleteChecklistItemsConfirmation()
         }
 
         binding.titleTextView.doAfterTextChanged {
             if (currentNoteType == NoteType.CHECKLIST && !isApplyingLoadedNote) {
-                binding.screenTitleTextView.text = checklistTitle()
                 scheduleChecklistAutoSave()
             }
         }
+    }
+
+    private fun setupBackHandling() {
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (isChecklistSelectionMode()) {
+                    exitChecklistSelectionMode()
+                } else {
+                    isEnabled = false
+                    onBackPressedDispatcher.onBackPressed()
+                }
+            }
+        })
     }
 
     private fun loadNote() {
@@ -231,15 +255,12 @@ class ViewNoteActivity : NotaviaActivity() {
         currentNoteType = noteType
         val isChecklist = noteType == NoteType.CHECKLIST
         selectedChecklistItemIndexes.clear()
-        binding.screenTitleTextView.text = if (isChecklist) {
-            note.title.ifBlank { getString(R.string.untitled_note) }
-        } else {
-            getString(R.string.view_note_title)
-        }
+        binding.screenTitleTextView.setText(R.string.view_note_title)
         binding.saveButton.visibility = View.GONE
         binding.editButton.visibility = if (isChecklist) View.GONE else View.VISIBLE
         binding.selectAllChecklistItemsButton.visibility = View.GONE
         binding.deleteChecklistItemsButton.visibility = View.GONE
+        binding.checklistSelectionActionBar.visibility = View.GONE
         binding.titleTextView.isFocusable = isChecklist
         binding.titleTextView.isFocusableInTouchMode = isChecklist
         binding.titleTextView.isCursorVisible = isChecklist
@@ -491,10 +512,126 @@ class ViewNoteActivity : NotaviaActivity() {
         binding.screenTitleTextView.text = if (isSelectionMode) {
             getString(R.string.selected_count_format, selectedChecklistItemIndexes.size)
         } else {
-            checklistTitle()
+            getString(R.string.view_note_title)
         }
         binding.selectAllChecklistItemsButton.visibility = if (isSelectionMode) View.VISIBLE else View.GONE
-        binding.deleteChecklistItemsButton.visibility = if (isSelectionMode) View.VISIBLE else View.GONE
+        binding.deleteChecklistItemsButton.visibility = View.GONE
+        binding.checklistSelectionActionBar.visibility = if (isSelectionMode) View.VISIBLE else View.GONE
+    }
+
+    private fun showDeleteChecklistItemsConfirmation() {
+        val count = selectedChecklistItemIndexes.size
+        if (count == 0) return
+
+        val dialog = BottomSheetDialog(this)
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(24.dp, 20.dp, 24.dp, 16.dp)
+            background = GradientDrawable().apply {
+                setColor(resolveThemeColor(com.google.android.material.R.attr.colorSurface))
+                cornerRadii = floatArrayOf(
+                    22.dp.toFloat(), 22.dp.toFloat(),
+                    22.dp.toFloat(), 22.dp.toFloat(),
+                    0f, 0f,
+                    0f, 0f,
+                )
+            }
+        }
+
+        container.addView(
+            TextView(this).apply {
+                text = getString(R.string.delete_notes_title)
+                textSize = 18f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnSurface))
+            },
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ),
+        )
+        container.addView(
+            TextView(this).apply {
+                text = resources.getQuantityString(
+                    R.plurals.delete_notes_confirmation_message,
+                    count,
+                    count,
+                )
+                textSize = 15f
+                setTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant))
+            },
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                topMargin = 8.dp
+            },
+        )
+
+        val actionsRow = LinearLayout(this).apply {
+            gravity = android.view.Gravity.END
+            orientation = LinearLayout.HORIZONTAL
+        }
+        actionsRow.addView(
+            createDialogActionButton(
+                text = getString(R.string.cancel_action),
+                textColor = resolveThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant),
+            ) {
+                dialog.dismiss()
+            },
+        )
+        actionsRow.addView(
+            createDialogActionButton(
+                text = getString(R.string.delete_confirm_action),
+                textColor = ContextCompat.getColor(this, R.color.priority_high),
+            ) {
+                dialog.dismiss()
+                deleteSelectedChecklistItems()
+            },
+        )
+        container.addView(
+            actionsRow,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                topMargin = 20.dp
+            },
+        )
+
+        dialog.setContentView(container)
+        dialog.setOnShowListener {
+            val bottomSheet = dialog.findViewById<View>(
+                com.google.android.material.R.id.design_bottom_sheet,
+            )
+            bottomSheet?.setBackgroundColor(Color.TRANSPARENT)
+        }
+        dialog.show()
+    }
+
+    private fun createDialogActionButton(
+        text: String,
+        textColor: Int,
+        onClick: () -> Unit,
+    ): MaterialButton {
+        return MaterialButton(this).apply {
+            this.text = text
+            setAllCaps(false)
+            setTextColor(textColor)
+            backgroundTintList = android.content.res.ColorStateList.valueOf(Color.TRANSPARENT)
+            rippleColor = android.content.res.ColorStateList.valueOf(Color.TRANSPARENT)
+            insetTop = 0
+            insetBottom = 0
+            minWidth = 0
+            minHeight = 0
+            setPadding(14.dp, 0, 14.dp, 0)
+            installAlphaPressFeedback(this)
+            setOnClickListener { onClick() }
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                44.dp,
+            )
+        }
     }
 
     private fun deleteSelectedChecklistItems() {
@@ -508,12 +645,6 @@ class ViewNoteActivity : NotaviaActivity() {
         renderChecklistItems()
         updateChecklistTopBar()
         scheduleChecklistAutoSave()
-    }
-
-    private fun checklistTitle(): String {
-        return binding.titleTextView.text?.toString()?.trim()
-            ?.takeIf { it.isNotBlank() }
-            ?: getString(R.string.untitled_note)
     }
 
     private fun addChecklistInputRow() {

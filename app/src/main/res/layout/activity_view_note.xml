@@ -89,11 +89,12 @@
     </LinearLayout>
 
     <ScrollView
+        android:id="@+id/contentScrollView"
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:clipToPadding="false"
         android:fillViewport="true"
-        android:paddingBottom="24dp"
+        android:paddingBottom="96dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
@@ -327,5 +328,36 @@
             </com.google.android.material.card.MaterialCardView>
         </LinearLayout>
     </ScrollView>
+
+    <LinearLayout
+        android:id="@+id/checklistSelectionActionBar"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:background="?attr/colorSurfaceContainerLow"
+        android:elevation="10dp"
+        android:gravity="center"
+        android:orientation="horizontal"
+        android:paddingStart="16dp"
+        android:paddingTop="10dp"
+        android:paddingEnd="16dp"
+        android:paddingBottom="10dp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/deleteChecklistSelectionButton"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/delete_action"
+            android:textColor="?attr/colorOnSurface"
+            app:icon="@drawable/delete"
+            app:iconGravity="textStart"
+            app:iconPadding="6dp"
+            app:iconTint="?attr/colorOnSurface"
+            app:rippleColor="@android:color/transparent" />
+    </LinearLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

@@ -96,8 +96,8 @@ class MainActivity : NotaviaActivity() {
         ViewCompat.setOnApplyWindowInsetsListener(binding.main) { _, insets ->
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             val isImeVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
-            val splitBottomInsetTop = systemBars.bottom / 2
-            val splitBottomInsetBottom = systemBars.bottom - splitBottomInsetTop
+            val splitBottomInsetTop = 0
+            val splitBottomInsetBottom = systemBars.bottom
             binding.defaultTopBar.updatePadding(
                 left = defaultTopBarPadding.left + systemBars.left,
                 top = defaultTopBarPadding.top + systemBars.top,

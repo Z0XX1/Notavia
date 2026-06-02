@@ -58,8 +58,8 @@ class NoteAdapter(
         private val onNoteLongClicked: (Note) -> Unit,
     ) : RecyclerView.ViewHolder(binding.root) {
 
-        private val dateFormatter = SimpleDateFormat(UPDATED_AT_PATTERN, Locale.ENGLISH)
-        private val deadlineFormatter = SimpleDateFormat(DEADLINE_DATE_PATTERN, Locale.ENGLISH)
+        private val dateFormatter = SimpleDateFormat(UPDATED_AT_PATTERN, RUSSIAN_LOCALE)
+        private val deadlineFormatter = SimpleDateFormat(DEADLINE_DATE_PATTERN, RUSSIAN_LOCALE)
 
         fun bind(note: Note, isSelectionMode: Boolean, isSelected: Boolean) {
             binding.titleTextView.text = note.title.ifBlank {
@@ -218,8 +218,9 @@ class NoteAdapter(
     }
 
     companion object {
-        private const val UPDATED_AT_PATTERN = "MMM d, yyyy h:mma"
-        private const val DEADLINE_DATE_PATTERN = "MMM d, yyyy"
+        private val RUSSIAN_LOCALE: Locale = Locale.forLanguageTag("ru")
+        private const val UPDATED_AT_PATTERN = "d MMM yyyy, HH:mm"
+        private const val DEADLINE_DATE_PATTERN = "d MMM yyyy"
         private const val MAX_CHECKLIST_PREVIEW_ITEMS = 3
     }
 }

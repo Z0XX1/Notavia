@@ -33,6 +33,16 @@
             android:textStyle="bold" />
 
         <androidx.appcompat.widget.AppCompatImageButton
+            android:id="@+id/remindersButton"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="@android:color/transparent"
+            android:contentDescription="@string/reminders"
+            android:padding="12dp"
+            android:src="@drawable/notification"
+            app:tint="?attr/colorOnBackground" />
+
+        <androidx.appcompat.widget.AppCompatImageButton
             android:id="@+id/settingsButton"
             android:layout_width="48dp"
             android:layout_height="48dp"
@@ -345,7 +355,7 @@
     <com.google.android.material.bottomnavigation.BottomNavigationView
         android:id="@+id/bottomNavigationView"
         android:layout_width="300dp"
-        android:layout_height="wrap_content"
+        android:layout_height="72dp"
         android:minHeight="72dp"
         android:background="@android:color/transparent"
         android:backgroundTint="@android:color/transparent"

@@ -6,6 +6,7 @@ import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.os.Build
 import android.os.Bundle
 import android.text.InputType
 import android.view.Gravity
@@ -21,6 +22,7 @@ import android.widget.LinearLayout
 import android.widget.PopupWindow
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AlertDialog
@@ -44,6 +46,7 @@ import com.example.notavia.data.NotaviaDatabase
 import com.example.notavia.databinding.ActivityMainBinding
 import com.example.notavia.settings.CategoryPreferences
 import com.example.notavia.ui.NoteAdapter
+import com.example.notavia.ui.NoteCategoryUi
 import com.example.notavia.ui.NotePriorityUi
 import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialog
@@ -52,12 +55,15 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.navigation.NavigationBarView
 import kotlinx.coroutines.launch
 
+// Главный экран: список заметок и чек-листов, поиск, фильтры, сортировка и режим выбора.
 class MainActivity : NotaviaActivity() {
+    // ViewBinding, адаптер списка и доступ к локальному хранилищу заметок.
     private lateinit var binding: ActivityMainBinding
     private lateinit var noteAdapter: NoteAdapter
     private lateinit var repository: NoteRepository
     private lateinit var categoryPreferences: CategoryPreferences
 
+    // Состояние главного экрана: текущий раздел, выбранные элементы, категории, фильтры и сортировки.
     private var currentSection: MainSection = MainSection.NOTES
     private var allNotes: List<Note> = emptyList()
     private var visibleNotes: List<Note> = emptyList()
@@ -85,6 +91,7 @@ class MainActivity : NotaviaActivity() {
         enableEdgeToEdge()
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        setupSystemNavigationBarColor()
         setupBottomBarLayers()
 
         val defaultTopBarPadding = binding.defaultTopBar.capturePadding()
@@ -92,12 +99,34 @@ class MainActivity : NotaviaActivity() {
         val bottomNavigationPadding = binding.bottomNavigationView.capturePadding()
         val selectionActionBarPadding = binding.selectionActionBar.capturePadding()
         val notesRecyclerViewPadding = binding.notesRecyclerView.capturePadding()
+        val bottomNavigationBottomMargin = binding.bottomNavigationView.captureBottomMargin()
+        val bottomNavigationBackgroundHeight = binding.bottomNavigationBackgroundView.captureHeight()
+        val addNoteFabBottomMargin = binding.addNoteFab.captureBottomMargin()
+        val selectionActionBarBottomMargin = binding.selectionActionBar.captureBottomMargin()
 
+        ViewCompat.setOnApplyWindowInsetsListener(binding.bottomNavigationView) { view, insets ->
+            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            view.updatePadding(
+                left = bottomNavigationPadding.left + systemBars.left,
+                top = bottomNavigationPadding.top,
+                right = bottomNavigationPadding.right + systemBars.right,
+                bottom = bottomNavigationPadding.bottom,
+            )
+            WindowInsetsCompat.CONSUMED
+        }
+
+        // Ручная обработка системных отступов для edge-to-edge режима и нижней навигации.
         ViewCompat.setOnApplyWindowInsetsListener(binding.main) { _, insets ->
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             val isImeVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
-            val splitBottomInsetTop = 0
-            val splitBottomInsetBottom = systemBars.bottom
+            val bottomBarInset = bottomBarInset(insets)
+            val bottomContentLift = dp(BOTTOM_NAVIGATION_CONTENT_LIFT_DP)
+            binding.bottomNavigationView.updateBottomMargin(
+                bottomNavigationBottomMargin + bottomBarInset + bottomContentLift,
+            )
+            binding.bottomNavigationBackgroundView.updateHeight(bottomNavigationBackgroundHeight + bottomBarInset)
+            binding.addNoteFab.updateBottomMargin(addNoteFabBottomMargin + bottomBarInset + bottomContentLift)
+            binding.selectionActionBar.updateBottomMargin(selectionActionBarBottomMargin + bottomBarInset)
             binding.defaultTopBar.updatePadding(
                 left = defaultTopBarPadding.left + systemBars.left,
                 top = defaultTopBarPadding.top + systemBars.top,
@@ -108,23 +137,17 @@ class MainActivity : NotaviaActivity() {
                 top = selectionTopBarPadding.top + systemBars.top,
                 right = selectionTopBarPadding.right + systemBars.right,
             )
-            binding.bottomNavigationView.updatePadding(
-                left = bottomNavigationPadding.left + systemBars.left,
-                top = bottomNavigationPadding.top + splitBottomInsetTop,
-                right = bottomNavigationPadding.right + systemBars.right,
-                bottom = bottomNavigationPadding.bottom + splitBottomInsetBottom,
-            )
             binding.selectionActionBar.updatePadding(
                 left = selectionActionBarPadding.left + systemBars.left,
-                top = selectionActionBarPadding.top + splitBottomInsetTop,
+                top = selectionActionBarPadding.top,
                 right = selectionActionBarPadding.right + systemBars.right,
-                bottom = selectionActionBarPadding.bottom + splitBottomInsetBottom,
+                bottom = selectionActionBarPadding.bottom,
             )
             binding.notesRecyclerView.updatePadding(
                 left = notesRecyclerViewPadding.left,
                 top = notesRecyclerViewPadding.top,
                 right = notesRecyclerViewPadding.right,
-                bottom = notesRecyclerViewPadding.bottom + systemBars.bottom,
+                bottom = notesRecyclerViewPadding.bottom + bottomBarInset,
             )
             if (!isImeVisible && binding.searchEditText.hasFocus()) {
                 clearSearchFocus()
@@ -153,6 +176,15 @@ class MainActivity : NotaviaActivity() {
         binding.addNoteFab.bringToFront()
     }
 
+    private fun setupSystemNavigationBarColor() {
+        window.navigationBarColor = resolveThemeColor(
+            com.google.android.material.R.attr.colorSurfaceContainerLow,
+        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         loadNotes()
@@ -163,6 +195,7 @@ class MainActivity : NotaviaActivity() {
         super.onPause()
     }
 
+    // Настройка списка: обычное нажатие открывает заметку, долгое нажатие включает выбор.
     private fun setupRecyclerView() {
         noteAdapter = NoteAdapter(
             onNoteClicked = { note ->
@@ -186,8 +219,10 @@ class MainActivity : NotaviaActivity() {
         }
     }
 
+    // Подключение кнопок главного экрана, поиска, нижней навигации и действий выбора.
     private fun setupActions() {
         installAlphaPressFeedback(binding.addNoteFab)
+        installAlphaPressFeedback(binding.remindersButton)
         installAlphaPressFeedback(binding.settingsButton)
         installAlphaPressFeedback(binding.closeSelectionButton)
         installAlphaPressFeedback(binding.selectAllButton)
@@ -204,6 +239,11 @@ class MainActivity : NotaviaActivity() {
         binding.settingsButton.setOnClickListener {
             clearSearchFocus()
             startActivity(Intent(this, SettingsActivity::class.java))
+        }
+
+        binding.remindersButton.setOnClickListener {
+            clearSearchFocus()
+            Toast.makeText(this, getString(R.string.reminders_coming_soon), Toast.LENGTH_SHORT).show()
         }
 
         binding.filterButton.setOnClickListener {
@@ -267,6 +307,7 @@ class MainActivity : NotaviaActivity() {
         }
     }
 
+    // Диалог добавления категории без отдельного экрана.
     private fun showAddCategoryDialog() {
         val input = AppCompatEditText(this).apply {
             hint = getString(R.string.category_name_hint)
@@ -343,6 +384,7 @@ class MainActivity : NotaviaActivity() {
         dialog.show()
     }
 
+    // Нормализация пользовательской категории и сохранение ее в DataStore.
     private fun addCustomCategory(rawCategory: String) {
         val category = NoteCategories.normalize(rawCategory)
         if (NoteCategories.isReserved(category)) return
@@ -374,6 +416,7 @@ class MainActivity : NotaviaActivity() {
         })
     }
 
+    // Загрузка всех заметок из Room через Repository.
     private fun loadNotes() {
         lifecycleScope.launch {
             allNotes = repository.getAllNotes()
@@ -381,6 +424,7 @@ class MainActivity : NotaviaActivity() {
         }
     }
 
+    // Единая пересборка списка: раздел, поиск, фильтры, сортировка и отправка в адаптер.
     private fun applySearchFilter() {
         resetMissingCategoryFilter()
 
@@ -414,6 +458,7 @@ class MainActivity : NotaviaActivity() {
         renderUi()
     }
 
+    // Обновление видимости основных блоков интерфейса под текущее состояние экрана.
     private fun renderUi() {
         val isNotesSection = currentSection == MainSection.NOTES
         val hasVisibleNotes = visibleNotes.isNotEmpty()
@@ -467,6 +512,7 @@ class MainActivity : NotaviaActivity() {
         )
     }
 
+    // Подсветка иконок фильтра и сортировки при активных параметрах.
     private fun updateFilterSortButtons() {
         if (currentSection != MainSection.NOTES) return
 
@@ -496,6 +542,7 @@ class MainActivity : NotaviaActivity() {
             selectedDeadlineFilters.isNotEmpty()
     }
 
+    // Сортировка видимого списка: закрепленные элементы выше, затем выбранные правила сортировки.
     private fun List<Note>.sortForCurrentMode(): List<Note> {
         return sortedWith { first, second ->
             comparePinned(first, second)
@@ -563,6 +610,7 @@ class MainActivity : NotaviaActivity() {
         }
     }
 
+    // Перерисовка горизонтальной строки категорий на главном экране.
     private fun renderCategoryFilters() {
         categoryFilterButtons.clear()
         binding.categoryFilterContainer.removeAllViews()
@@ -577,7 +625,7 @@ class MainActivity : NotaviaActivity() {
         addCategoryAddButton()
         addCategoryFilterButton(null, getString(R.string.all_categories))
         availableCategoryFilters().forEach { category ->
-            addCategoryFilterButton(category, category)
+            addCategoryFilterButton(category, NoteCategoryUi.displayName(this, category))
         }
         updateCategoryFilterButtons()
     }
@@ -709,6 +757,7 @@ class MainActivity : NotaviaActivity() {
         )
     }
 
+    // Нижнее окно фильтров по приоритету, дедлайну и категории.
     private fun showFilterSheet() {
         val dialog = BottomSheetDialog(this)
         val content = createBottomSheetContainer()
@@ -784,7 +833,7 @@ class MainActivity : NotaviaActivity() {
         availableCategoryFilters().forEach { category ->
             content.addView(
                 createSheetOptionRow(
-                    title = category,
+                    title = NoteCategoryUi.displayName(this, category),
                     isSelected = { selectedCategoryFilters.contains(category) },
                     registerSelectionUpdater = filterRowRefreshers::add,
                 ) {
@@ -810,6 +859,7 @@ class MainActivity : NotaviaActivity() {
         dialog.show()
     }
 
+    // Нижнее окно выбора сортировки по дате создания, приоритету и дедлайну.
     private fun showSortSheet() {
         val dialog = BottomSheetDialog(this)
         val content = createBottomSheetContainer()
@@ -1063,6 +1113,7 @@ class MainActivity : NotaviaActivity() {
         }
     }
 
+    // Переключатели мультивыбора для групп фильтров.
     private fun togglePriorityFilter(priority: NotePriority) {
         if (!selectedPriorityFilters.add(priority)) {
             selectedPriorityFilters.remove(priority)
@@ -1341,6 +1392,7 @@ class MainActivity : NotaviaActivity() {
         return category == null || NoteCategories.isReserved(category)
     }
 
+    // Подписки на DataStore с состоянием закрепленных, скрытых и пользовательских категорий.
     private fun observePinnedCategories() {
         lifecycleScope.launch {
             categoryPreferences.pinnedCategoriesFlow.collect { categories ->
@@ -1376,6 +1428,7 @@ class MainActivity : NotaviaActivity() {
         }
     }
 
+    // Обновление верхней панели в режиме выбора заметок или категорий.
     private fun updateSelectionTitle() {
         binding.selectionCountTextView.text = when (selectionMode) {
             SelectionMode.NOTES -> getString(
@@ -1513,6 +1566,7 @@ class MainActivity : NotaviaActivity() {
         }
     }
 
+    // Подтверждение удаления через BottomSheet перед изменением базы.
     private fun showDeleteNotesConfirmation() {
         val count = selectedNoteIds.size
         if (count == 0) return
@@ -1636,6 +1690,7 @@ class MainActivity : NotaviaActivity() {
         }
     }
 
+    // Удаление категорий из заметок и обновление сохраненного состояния категорий.
     private fun deleteSelectedCategories() {
         val categoriesToDelete = selectedCategoryNames
             .filterNot { isProtectedCategory(it) }
@@ -1698,6 +1753,16 @@ class MainActivity : NotaviaActivity() {
         inputMethodManager?.hideSoftInputFromWindow(binding.searchEditText.windowToken, 0)
     }
 
+    private fun bottomBarInset(insets: WindowInsetsCompat): Int {
+        val navigationBars = insets.getInsets(WindowInsetsCompat.Type.navigationBars())
+        val tappableElement = insets.getInsets(WindowInsetsCompat.Type.tappableElement())
+        return if (tappableElement.bottom > 0 && tappableElement.bottom >= navigationBars.bottom) {
+            navigationBars.bottom
+        } else {
+            0
+        }
+    }
+
     private fun dp(value: Int): Int {
         return (value * resources.displayMetrics.density).toInt()
     }
@@ -1743,6 +1808,7 @@ class MainActivity : NotaviaActivity() {
         }
     }
 
+    // Внутренние типы состояния главного экрана.
     private enum class MainSection(val noteType: NoteType) {
         NOTES(NoteType.NOTE),
         CHECKLISTS(NoteType.CHECKLIST),
@@ -1781,6 +1847,7 @@ class MainActivity : NotaviaActivity() {
 
     companion object {
         private const val BUTTON_PRESSED_ALPHA = 0.68f
+        private const val BOTTOM_NAVIGATION_CONTENT_LIFT_DP = 20
     }
 }
 
@@ -1798,4 +1865,29 @@ private fun View.capturePadding(): ViewPadding {
         right = paddingRight,
         bottom = paddingBottom,
     )
+}
+
+private fun View.captureBottomMargin(): Int {
+    return (layoutParams as? ViewGroup.MarginLayoutParams)?.bottomMargin ?: 0
+}
+
+private fun View.captureHeight(): Int {
+    val layoutHeight = layoutParams?.height ?: 0
+    return if (layoutHeight > 0) layoutHeight else height
+}
+
+private fun View.updateHeight(height: Int) {
+    if (layoutParams.height == height) return
+
+    layoutParams = layoutParams.apply {
+        this.height = height
+    }
+}
+
+private fun View.updateBottomMargin(bottomMargin: Int) {
+    val marginLayoutParams = layoutParams as? ViewGroup.MarginLayoutParams ?: return
+    if (marginLayoutParams.bottomMargin == bottomMargin) return
+
+    marginLayoutParams.bottomMargin = bottomMargin
+    layoutParams = marginLayoutParams
 }

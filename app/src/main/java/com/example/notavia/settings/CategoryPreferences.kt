@@ -13,6 +13,7 @@ import java.io.IOException
 
 private val Context.categoryDataStore by preferencesDataStore(name = "notavia_categories")
 
+// DataStore для закрепленных, скрытых и пользовательских категорий.
 class CategoryPreferences(private val context: Context) {
     val pinnedCategoriesFlow: Flow<Set<String>> = context.categoryDataStore.data
         .catch { exception ->
@@ -66,6 +67,7 @@ class CategoryPreferences(private val context: Context) {
                 .orEmpty()
         }
 
+    // Сохранение закрепленных категорий без служебных значений.
     suspend fun setPinnedCategories(categories: Set<String>) {
         context.categoryDataStore.edit { preferences ->
             val pinnedCategories = categories
@@ -80,6 +82,7 @@ class CategoryPreferences(private val context: Context) {
         }
     }
 
+    // Сохранение скрытых категорий после удаления из панели.
     suspend fun setHiddenCategories(categories: Set<String>) {
         context.categoryDataStore.edit { preferences ->
             val hiddenCategories = categories
@@ -94,6 +97,7 @@ class CategoryPreferences(private val context: Context) {
         }
     }
 
+    // Сохранение пользовательских категорий без стандартных значений.
     suspend fun setCustomCategories(categories: Set<String>) {
         context.categoryDataStore.edit { preferences ->
             val customCategories = categories

@@ -7,6 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
+// Room Database хранит заметки и описывает миграции между версиями схемы.
 @Database(entities = [Note::class], version = 5, exportSchema = false)
 abstract class NotaviaDatabase : RoomDatabase() {
     abstract fun noteDao(): NoteDao
@@ -15,6 +16,7 @@ abstract class NotaviaDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: NotaviaDatabase? = null
 
+        // Миграции добавляют новые поля без удаления старых заметок пользователя.
         private val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(
@@ -45,6 +47,7 @@ abstract class NotaviaDatabase : RoomDatabase() {
             }
         }
 
+        // Singleton базы предотвращает создание нескольких экземпляров Room.
         fun getDatabase(context: Context): NotaviaDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(

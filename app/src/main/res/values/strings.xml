@@ -11,6 +11,11 @@
     <string name="title_hint">Заголовок</string>
     <string name="content_hint">Текст заметки</string>
     <string name="category_title">Категории</string>
+    <string name="category_default">Без категории</string>
+    <string name="category_personal">Личное</string>
+    <string name="category_study">Учёба</string>
+    <string name="category_work">Работа</string>
+    <string name="category_ideas">Идеи</string>
     <string name="custom_category_hint">Добавить категорию</string>
     <string name="category_name_hint">Название</string>
     <string name="add_category_action">Добавить</string>
@@ -28,6 +33,8 @@
     <string name="updated_at_format">%1$s</string>
     <string name="updated_at_with_deadline_format">%1$s | %2$s</string>
     <string name="settings">Настройки</string>
+    <string name="reminders">Напоминания</string>
+    <string name="reminders_coming_soon">Напоминания появятся позже</string>
     <string name="light_theme">Светлая тема</string>
     <string name="dark_theme">Тёмная тема</string>
     <string name="light_theme_short">Светлая</string>
@@ -38,6 +45,10 @@
     <string name="font_size_medium">Средний</string>
     <string name="font_size_large">Большой</string>
     <string name="theme_title">Тема</string>
+    <string name="misc_settings_section">Прочее</string>
+    <string name="language_title">Язык</string>
+    <string name="language_russian">Русский</string>
+    <string name="language_english">Английский</string>
     <string name="filter_action">Фильтры</string>
     <string name="sort_action">Сортировка</string>
     <string name="filters_title">Фильтры</string>
@@ -70,6 +81,7 @@
     <string name="checklists_placeholder_title">Чек-листы позже</string>
     <string name="checklists_placeholder_message">Идёт активная доработка заметок</string>
     <string name="pinned_note">Закреплённая заметка</string>
+    <string name="pinned_checklist">Закреплённый чек-лист</string>
     <string name="selected_note">Выбранная заметка</string>
     <string name="close_selection">Закрыть режим выбора</string>
     <string name="select_all">Выбрать все</string>

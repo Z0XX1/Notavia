@@ -2,6 +2,7 @@ package com.example.notavia.ui
 
 import android.content.res.ColorStateList
 import android.graphics.Paint
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
@@ -16,7 +17,6 @@ import androidx.core.content.ContextCompat
 import com.example.notavia.R
 import com.example.notavia.data.ChecklistContent
 import com.example.notavia.data.Note
-import com.example.notavia.data.NoteCategories
 import com.example.notavia.data.NotePriority
 import com.example.notavia.data.NoteType
 import com.example.notavia.databinding.ItemNoteBinding
@@ -24,6 +24,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+// Адаптер превращает объекты Note в карточки RecyclerView.
 class NoteAdapter(
     private val onNoteClicked: (Note) -> Unit,
     private val onNoteLongClicked: (Note) -> Unit,
@@ -52,18 +53,21 @@ class NoteAdapter(
         notifyDataSetChanged()
     }
 
+    // ViewHolder заполняет одну карточку заметки или чек-листа.
     class NoteViewHolder(
         private val binding: ItemNoteBinding,
         private val onNoteClicked: (Note) -> Unit,
         private val onNoteLongClicked: (Note) -> Unit,
     ) : RecyclerView.ViewHolder(binding.root) {
 
-        private val dateFormatter = SimpleDateFormat(UPDATED_AT_PATTERN, RUSSIAN_LOCALE)
-        private val deadlineFormatter = SimpleDateFormat(DEADLINE_DATE_PATTERN, RUSSIAN_LOCALE)
-
+        // Привязка данных Note к текстам, иконкам, категориям, датам и состоянию выбора.
         fun bind(note: Note, isSelectionMode: Boolean, isSelected: Boolean) {
+            val context = binding.root.context
+            val currentLocale = currentLocale()
+            val dateFormatter = SimpleDateFormat(UPDATED_AT_PATTERN, currentLocale)
+            val deadlineFormatter = SimpleDateFormat(DEADLINE_DATE_PATTERN, currentLocale)
             binding.titleTextView.text = note.title.ifBlank {
-                binding.root.context.getString(R.string.untitled_note)
+                context.getString(R.string.untitled_note)
             }
             val noteType = NoteType.fromStorage(note.type)
             if (noteType == NoteType.CHECKLIST) {
@@ -74,10 +78,10 @@ class NoteAdapter(
                 binding.contentTextView.visibility = View.VISIBLE
                 binding.checklistPreviewContainer.visibility = View.GONE
                 binding.contentTextView.text = note.content.ifBlank {
-                    binding.root.context.getString(R.string.empty_note_preview)
+                    context.getString(R.string.empty_note_preview)
                 }
             }
-            binding.categoryTextView.text = NoteCategories.display(note.category)
+            binding.categoryTextView.text = NoteCategoryUi.display(context, note.category)
             binding.categoryTextView.visibility = if (noteType == NoteType.CHECKLIST) {
                 View.GONE
             } else {
@@ -91,14 +95,21 @@ class NoteAdapter(
             }
             NotePriorityUi.applyTo(binding.priorityIndicatorImageView, priority)
             binding.updatedAtTextView.text = note.deadlineAt?.let { deadline ->
-                binding.root.context.getString(
+                context.getString(
                     R.string.updated_at_with_deadline_format,
                     dateFormatter.format(Date(note.updatedAt)),
                     deadlineFormatter.format(Date(deadline)),
                 )
-            } ?: binding.root.context.getString(
+            } ?: context.getString(
                 R.string.updated_at_format,
                 dateFormatter.format(Date(note.updatedAt)),
+            )
+            binding.updatedAtTextView.setTextColor(
+                if (note.deadlineAt?.let { isDeadlineOverdue(it) } == true) {
+                    ContextCompat.getColor(context, R.color.priority_high)
+                } else {
+                    resolveThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant)
+                },
             )
 
             binding.pinnedImageView.visibility = if (note.isPinned) {
@@ -118,7 +129,7 @@ class NoteAdapter(
                 )
                 binding.selectionImageView.imageTintList = ColorStateList.valueOf(
                     ContextCompat.getColor(
-                        binding.root.context,
+                        context,
                         if (isSelected) R.color.selection_stroke_color
                         else R.color.note_stroke_color,
                     ),
@@ -129,7 +140,7 @@ class NoteAdapter(
 
             binding.root.strokeWidth = if (isSelected) 3 else 1
             binding.root.strokeColor = ContextCompat.getColor(
-                binding.root.context,
+                context,
                 if (isSelected) R.color.selection_stroke_color else R.color.note_stroke_color,
             )
 
@@ -143,6 +154,7 @@ class NoteAdapter(
             }
         }
 
+        // Короткое превью первых пунктов чек-листа внутри карточки.
         private fun renderChecklistPreview(content: String) {
             binding.checklistPreviewContainer.removeAllViews()
             val context = binding.root.context
@@ -205,8 +217,29 @@ class NoteAdapter(
 
         private val Int.dp: Int
             get() = (this * binding.root.resources.displayMetrics.density).toInt()
+
+        private fun currentLocale(): Locale {
+            val locales = binding.root.resources.configuration.locales
+            return if (locales.size() > 0) locales[0] else Locale.getDefault()
+        }
+
+        private fun isDeadlineOverdue(deadlineAt: Long): Boolean {
+            return deadlineAt < System.currentTimeMillis()
+        }
+
+        private fun resolveThemeColor(attr: Int): Int {
+            val typedValue = TypedValue()
+            val context = binding.root.context
+            context.theme.resolveAttribute(attr, typedValue, true)
+            return if (typedValue.resourceId != 0) {
+                ContextCompat.getColor(context, typedValue.resourceId)
+            } else {
+                typedValue.data
+            }
+        }
     }
 
+    // DiffUtil обновляет только изменившиеся карточки списка.
     class NoteDiffCallback : DiffUtil.ItemCallback<Note>() {
         override fun areItemsTheSame(oldItem: Note, newItem: Note): Boolean {
             return oldItem.id == newItem.id
@@ -218,7 +251,6 @@ class NoteAdapter(
     }
 
     companion object {
-        private val RUSSIAN_LOCALE: Locale = Locale.forLanguageTag("ru")
         private const val UPDATED_AT_PATTERN = "d MMM yyyy, HH:mm"
         private const val DEADLINE_DATE_PATTERN = "d MMM yyyy"
         private const val MAX_CHECKLIST_PREVIEW_ITEMS = 3

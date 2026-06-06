@@ -11,6 +11,7 @@ import java.io.IOException
 
 private val Context.dataStore by preferencesDataStore(name = "notavia_settings")
 
+// DataStore для выбранной темы приложения.
 class ThemePreferences(private val context: Context) {
     val themeFlow: Flow<AppTheme> = context.dataStore.data
         .catch { exception ->
@@ -35,6 +36,7 @@ class ThemePreferences(private val context: Context) {
     }
 }
 
+// DataStore для выбранного размера шрифта.
 class AppearancePreferences(private val context: Context) {
     val fontSizeFlow: Flow<AppFontSize> = context.dataStore.data
         .catch { exception ->
@@ -56,5 +58,29 @@ class AppearancePreferences(private val context: Context) {
 
     private object Keys {
         val FONT_SIZE = stringPreferencesKey("font_size")
+    }
+}
+
+class LanguagePreferences(private val context: Context) {
+    val languageFlow: Flow<AppLanguage> = context.dataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(androidx.datastore.preferences.core.emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences ->
+            AppLanguage.fromStorage(preferences[Keys.LANGUAGE])
+        }
+
+    suspend fun setLanguage(language: AppLanguage) {
+        context.dataStore.edit { preferences ->
+            preferences[Keys.LANGUAGE] = language.storageValue
+        }
+    }
+
+    private object Keys {
+        val LANGUAGE = stringPreferencesKey("language")
     }
 }

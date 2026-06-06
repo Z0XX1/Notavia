@@ -43,6 +43,7 @@ import com.example.notavia.data.NoteType
 import com.example.notavia.data.NotaviaDatabase
 import com.example.notavia.databinding.ActivityEditNoteBinding
 import com.example.notavia.settings.CategoryPreferences
+import com.example.notavia.ui.NoteCategoryUi
 import com.example.notavia.ui.NotePriorityUi
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -55,11 +56,14 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
+// Экран создания и редактирования заметок и чек-листов.
 class EditNoteActivity : NotaviaActivity() {
+    // Основные зависимости редактора: ViewBinding, Repository и настройки категорий.
     private lateinit var binding: ActivityEditNoteBinding
     private lateinit var repository: NoteRepository
     private lateinit var categoryPreferences: CategoryPreferences
 
+    // Состояние редактируемой записи, выбранных категорий, приоритета, дедлайна и автосохранения.
     private var noteId: Long = NO_NOTE_ID
     private var existingNote: Note? = null
     private var selectedNoteType: NoteType = NoteType.NOTE
@@ -78,15 +82,16 @@ class EditNoteActivity : NotaviaActivity() {
     private var pendingSaveAfterCurrent: Boolean = false
     private var lastSavedDraft: NoteDraft? = null
     private val deadlineDateFormatter: SimpleDateFormat by lazy {
-        SimpleDateFormat(DEADLINE_DATE_PATTERN, RUSSIAN_LOCALE)
+        SimpleDateFormat(DEADLINE_DATE_PATTERN, currentLocale())
     }
     private val monthLabels: Array<String> by lazy {
-        DateFormatSymbols.getInstance(RUSSIAN_LOCALE).shortMonths
+        val locale = currentLocale()
+        DateFormatSymbols.getInstance(locale).shortMonths
             .take(12)
             .map { month ->
                 month.trim()
                     .removeSuffix(".")
-                    .lowercase(RUSSIAN_LOCALE)
+                    .lowercase(locale)
             }
             .toTypedArray()
     }
@@ -143,6 +148,7 @@ class EditNoteActivity : NotaviaActivity() {
         setupBackHandling()
     }
 
+    // Подключение кнопок, текстовых полей и обработчиков изменения содержимого.
     private fun setupActions() {
         installAlphaPressFeedback(binding.backButton)
 
@@ -197,6 +203,7 @@ class EditNoteActivity : NotaviaActivity() {
         }
     }
 
+    // Переключение интерфейса между обычной заметкой и чек-листом.
     private fun updateEditorMode() {
         val isChecklist = selectedNoteType == NoteType.CHECKLIST
         binding.contentEditText.visibility = if (isChecklist) View.GONE else View.VISIBLE
@@ -237,6 +244,7 @@ class EditNoteActivity : NotaviaActivity() {
         )
     }
 
+    // Перерисовка пунктов чек-листа с разделением на выполненные и невыполненные.
     private fun renderChecklistItems() {
         binding.checklistItemsContainer.removeAllViews()
 
@@ -302,11 +310,6 @@ class EditNoteActivity : NotaviaActivity() {
             } else {
                 paintFlags and Paint.STRIKE_THRU_TEXT_FLAG.inv()
             }
-            setOnClickListener {
-                checklistItems[index] = item.copy(isDone = !item.isDone)
-                renderChecklistItems()
-                scheduleAutoSave()
-            }
         }
         row.addView(
             titleTextView,
@@ -332,6 +335,7 @@ class EditNoteActivity : NotaviaActivity() {
         return row
     }
 
+    // Подготовка выбора нескольких категорий для обычной заметки.
     private fun setupCategoryPicker() {
         renderCategoryButtons()
 
@@ -341,6 +345,7 @@ class EditNoteActivity : NotaviaActivity() {
         updateCategoryUi()
     }
 
+    // Настройка раскрывающегося выбора дедлайна через три NumberPicker.
     private fun setupDeadlinePicker() {
         listOf(
             binding.deadlineDayPicker,
@@ -371,6 +376,7 @@ class EditNoteActivity : NotaviaActivity() {
         }
     }
 
+    // Анимация открытия блока дедлайна и поворота стрелки.
     private fun setDeadlinePickerExpanded(expanded: Boolean) {
         if (isDeadlinePickerExpanded == expanded) return
 
@@ -406,6 +412,7 @@ class EditNoteActivity : NotaviaActivity() {
         }
     }
 
+    // Преобразование выбранного дня, месяца и года в timestamp дедлайна.
     private fun updateDeadlineFromPickers() {
         if (isUpdatingDeadlinePickers) return
 
@@ -535,6 +542,7 @@ class EditNoteActivity : NotaviaActivity() {
         }.getActualMaximum(Calendar.DAY_OF_MONTH)
     }
 
+    // Всплывающее меню выбора приоритета заметки.
     private fun showPriorityMenu() {
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -635,6 +643,7 @@ class EditNoteActivity : NotaviaActivity() {
         }
     }
 
+    // Диалог добавления новой категории из редактора.
     private fun showAddCategoryDialog() {
         val input = AppCompatEditText(this).apply {
             hint = getString(R.string.category_name_hint)
@@ -784,7 +793,7 @@ class EditNoteActivity : NotaviaActivity() {
 
     private fun addCategoryButton(category: String) {
         val button = MaterialButton(this).apply {
-            text = category
+            text = NoteCategoryUi.displayName(this@EditNoteActivity, category)
             setAllCaps(false)
             minWidth = 0
             minHeight = 0
@@ -871,6 +880,7 @@ class EditNoteActivity : NotaviaActivity() {
         selectedCategories.add(normalizedCategory)
     }
 
+    // Загрузка существующей заметки по ID и заполнение полей редактора.
     private fun loadNote() {
         lifecycleScope.launch {
             val note = repository.getNoteById(noteId) ?: run {
@@ -915,6 +925,7 @@ class EditNoteActivity : NotaviaActivity() {
         }
     }
 
+    // Отложенный запуск автосохранения после изменения текста или параметров.
     private fun scheduleAutoSave() {
         if (isApplyingLoadedNote) return
 
@@ -925,6 +936,7 @@ class EditNoteActivity : NotaviaActivity() {
         }
     }
 
+    // Защита от параллельных сохранений и повторная запись при новых изменениях.
     private fun requestAutoSaveNow() {
         if (isApplyingLoadedNote) return
 
@@ -958,6 +970,7 @@ class EditNoteActivity : NotaviaActivity() {
         }
     }
 
+    // Запись текущего черновика в Room через Repository.
     private suspend fun persistCurrentNote() {
         val draft = currentDraft()
         if (draft == lastSavedDraft) return
@@ -989,6 +1002,7 @@ class EditNoteActivity : NotaviaActivity() {
         lastSavedDraft = draft
     }
 
+    // Сбор текущих значений экрана в объект для сравнения и сохранения.
     private fun currentDraft(): NoteDraft {
         return NoteDraft(
             title = binding.titleEditText.text?.toString()?.trim().orEmpty(),
@@ -1063,6 +1077,7 @@ class EditNoteActivity : NotaviaActivity() {
         inputMethodManager?.hideSoftInputFromWindow(focusedView.windowToken, 0)
     }
 
+    // Прокрутка редактора к курсору при открытой клавиатуре.
     private fun scrollToContentCursor() {
         binding.contentEditText.post {
             val layout = binding.contentEditText.layout ?: return@post
@@ -1087,6 +1102,7 @@ class EditNoteActivity : NotaviaActivity() {
         }
     }
 
+    // Синхронизация выбранных категорий с кнопками в интерфейсе.
     private fun updateCategoryUi() {
         val customSelectedCategories = selectedCategories
             .map { NoteCategories.normalize(it) }
@@ -1156,6 +1172,11 @@ class EditNoteActivity : NotaviaActivity() {
         }
     }
 
+    private fun currentLocale(): Locale {
+        val locales = resources.configuration.locales
+        return if (locales.size() > 0) locales[0] else Locale.getDefault()
+    }
+
     companion object {
         const val EXTRA_NOTE_ID = "extra_note_id"
         const val EXTRA_NOTE_TYPE = "extra_note_type"
@@ -1167,9 +1188,9 @@ class EditNoteActivity : NotaviaActivity() {
         private const val DEADLINE_PICKER_ANIMATION_MS = 160L
         private const val MAX_DEADLINE_YEAR = 2067
         private const val DEADLINE_DATE_PATTERN = "d MMM yyyy"
-        private val RUSSIAN_LOCALE: Locale = Locale.forLanguageTag("ru")
     }
 
+    // Черновик используется для сравнения текущего состояния с последним сохранением.
     private data class NoteDraft(
         val title: String,
         val content: String,

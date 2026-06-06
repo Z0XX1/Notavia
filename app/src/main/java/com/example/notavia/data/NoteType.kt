@@ -1,5 +1,6 @@
 package com.example.notavia.data
 
+// Enum разделяет обычные заметки и чек-листы в общей таблице notes.
 enum class NoteType(val storageValue: String) {
     NOTE("note"),
     CHECKLIST("checklist");

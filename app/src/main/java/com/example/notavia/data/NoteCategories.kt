@@ -2,6 +2,7 @@ package com.example.notavia.data
 
 import java.util.Locale
 
+// Логика стандартных, пользовательских и служебных категорий заметок.
 object NoteCategories {
     const val DEFAULT = "Без категории"
     const val ALL = "Все"
@@ -15,6 +16,7 @@ object NoteCategories {
         "Идеи",
     )
 
+    // Нормализация убирает пробелы, приводит регистр и распознает стандартные категории.
     fun normalize(category: String): String {
         val trimmedCategory = category.trim()
         if (trimmedCategory.isBlank()) return DEFAULT
@@ -23,6 +25,7 @@ object NoteCategories {
             ?: formatCustomCategory(trimmedCategory)
     }
 
+    // Разбор строки из базы в список категорий.
     fun parse(categories: String): List<String> {
         return categories
             .split(SEPARATOR)
@@ -31,6 +34,7 @@ object NoteCategories {
             .ifEmpty { listOf(DEFAULT) }
     }
 
+    // Подготовка выбранных категорий к сохранению в одну строку базы.
     fun serialize(categories: Collection<String>): String {
         val normalized = categories
             .map { normalize(it) }
@@ -59,16 +63,19 @@ object NoteCategories {
         return normalizedCategory == DEFAULT || normalizedCategory == ALL
     }
 
+    // Сбор доступных категорий с учетом заметок, закрепления и пользовательских значений.
     fun availableFrom(notes: List<Note>): List<String> {
         return (STANDARD + notes.flatMap { parse(it.category) })
             .filterNot { it == ALL }
             .distinct()
     }
 
+    // Сбор доступных категорий с учетом заметок, закрепления и пользовательских значений.
     fun availableFrom(notes: List<Note>, pinnedCategories: Set<String>): List<String> {
         return availableFrom(notes, pinnedCategories, emptySet())
     }
 
+    // Сбор доступных категорий с учетом заметок, закрепления и пользовательских значений.
     fun availableFrom(
         notes: List<Note>,
         pinnedCategories: Set<String>,

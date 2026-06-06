@@ -5,8 +5,10 @@ import androidx.room.Insert
 import androidx.room.Query
 import androidx.room.Update
 
+// DAO содержит SQL-операции для таблицы заметок.
 @Dao
 interface NoteDao {
+    // Получение всех записей: закрепленные выше, затем новые изменения выше старых.
     @Query("SELECT * FROM notes ORDER BY isPinned DESC, updatedAt DESC")
     suspend fun getAllNotes(): List<Note>
 

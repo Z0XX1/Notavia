@@ -15,23 +15,30 @@ import android.widget.TextView
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.content.ContextCompat
+import androidx.core.os.LocaleListCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import com.example.notavia.databinding.ActivitySettingsBinding
 import com.example.notavia.settings.AppFontSize
+import com.example.notavia.settings.AppLanguage
 import com.example.notavia.settings.AppTheme
 import com.example.notavia.settings.AppearancePreferences
+import com.example.notavia.settings.LanguagePreferences
 import com.example.notavia.settings.ThemePreferences
 import kotlinx.coroutines.launch
 
+// Экран настроек внешнего вида приложения.
 class SettingsActivity : NotaviaActivity() {
+    // DataStore-настройки темы и размера шрифта.
     private lateinit var binding: ActivitySettingsBinding
     private lateinit var themePreferences: ThemePreferences
     private lateinit var appearancePreferences: AppearancePreferences
+    private lateinit var languagePreferences: LanguagePreferences
 
     private var currentTheme: AppTheme = AppTheme.DARK
     private var currentFontSize: AppFontSize = AppFontSize.MEDIUM
+    private var currentLanguage: AppLanguage = AppLanguage.RUSSIAN
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -47,14 +54,17 @@ class SettingsActivity : NotaviaActivity() {
 
         themePreferences = ThemePreferences(this)
         appearancePreferences = AppearancePreferences(this)
+        languagePreferences = LanguagePreferences(this)
         setupActions()
         observeSettings()
     }
 
+    // Подключение кнопки назад и строк настроек.
     private fun setupActions() {
         installAlphaPressFeedback(binding.backButton)
         installAlphaPressFeedback(binding.fontSizeRow)
         installAlphaPressFeedback(binding.themeRow)
+        installAlphaPressFeedback(binding.languageRow)
 
         binding.backButton.setOnClickListener {
             finish()
@@ -67,8 +77,13 @@ class SettingsActivity : NotaviaActivity() {
         binding.themeRow.setOnClickListener {
             showThemeMenu()
         }
+
+        binding.languageRow.setOnClickListener {
+            showLanguageMenu()
+        }
     }
 
+    // Чтение текущих значений темы и размера шрифта из DataStore.
     private fun observeSettings() {
         lifecycleScope.launch {
             themePreferences.themeFlow.collect { theme ->
@@ -80,6 +95,12 @@ class SettingsActivity : NotaviaActivity() {
             appearancePreferences.fontSizeFlow.collect { fontSize ->
                 currentFontSize = fontSize
                 updateFontSizeRow()
+            }
+        }
+        lifecycleScope.launch {
+            languagePreferences.languageFlow.collect { language ->
+                currentLanguage = language
+                updateLanguageRow()
             }
         }
     }
@@ -109,6 +130,19 @@ class SettingsActivity : NotaviaActivity() {
         }
     }
 
+    private fun showLanguageMenu() {
+        showSettingsMenu(
+            anchor = binding.languageRow,
+            options = AppLanguage.entries.map { language ->
+                SettingsOption(language, getString(language.labelRes))
+            },
+            selectedValue = currentLanguage,
+        ) { language ->
+            changeLanguage(language)
+        }
+    }
+
+    // Универсальное всплывающее меню для настроек с выбранным пунктом.
     private fun <T> showSettingsMenu(
         anchor: View,
         options: List<SettingsOption<T>>,
@@ -221,6 +255,7 @@ class SettingsActivity : NotaviaActivity() {
         }
     }
 
+    // Сохранение темы и применение night mode через AppCompatDelegate.
     private fun changeTheme(theme: AppTheme) {
         if (theme == currentTheme) return
 
@@ -230,11 +265,24 @@ class SettingsActivity : NotaviaActivity() {
         }
     }
 
+    // Сохранение масштаба шрифта и пересоздание экрана.
     private fun changeFontSize(fontSize: AppFontSize) {
         if (fontSize == currentFontSize) return
 
         lifecycleScope.launch {
             appearancePreferences.setFontSize(fontSize)
+            recreate()
+        }
+    }
+
+    private fun changeLanguage(language: AppLanguage) {
+        if (language == currentLanguage) return
+
+        lifecycleScope.launch {
+            languagePreferences.setLanguage(language)
+            AppCompatDelegate.setApplicationLocales(
+                LocaleListCompat.forLanguageTags(language.localeTag),
+            )
             recreate()
         }
     }
@@ -251,6 +299,10 @@ class SettingsActivity : NotaviaActivity() {
 
     private fun updateFontSizeRow() {
         binding.fontSizeValueTextView.text = getString(currentFontSize.labelRes)
+    }
+
+    private fun updateLanguageRow() {
+        binding.languageValueTextView.text = getString(currentLanguage.labelRes)
     }
 
     private fun installAlphaPressFeedback(view: View) {

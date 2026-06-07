@@ -1,12 +1,12 @@
 package com.example.notavia.data
 
-// Repository отделяет экраны от прямой работы с DAO.
+
 class NoteRepository(private val noteDao: NoteDao) {
     suspend fun getAllNotes(): List<Note> = noteDao.getAllNotes()
 
     suspend fun getNoteById(id: Long): Note? = noteDao.getNoteById(id)
 
-    // Новая запись добавляется через insert, существующая обновляется через update.
+
     suspend fun saveNote(note: Note): Long {
         return if (note.id == 0L) {
             noteDao.insert(note)

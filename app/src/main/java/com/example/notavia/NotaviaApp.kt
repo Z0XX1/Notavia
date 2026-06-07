@@ -8,7 +8,7 @@ import com.example.notavia.settings.ThemePreferences
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 
-// Класс приложения применяет сохраненную тему до открытия первого экрана.
+
 class NotaviaApp : Application() {
     override fun onCreate() {
         super.onCreate()

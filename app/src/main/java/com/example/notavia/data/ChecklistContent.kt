@@ -3,18 +3,18 @@ package com.example.notavia.data
 import org.json.JSONArray
 import org.json.JSONObject
 
-// Один пункт чек-листа: текст и состояние выполнения.
+
 data class ChecklistItem(
     val text: String,
     val isDone: Boolean = false,
 )
 
-// Сериализация чек-листа в JSON и обратный разбор из поля content.
+
 object ChecklistContent {
     private const val KEY_TEXT = "text"
     private const val KEY_IS_DONE = "isDone"
 
-    // Безопасное чтение JSON: поврежденное содержимое превращается в пустой список.
+
     fun parse(content: String): List<ChecklistItem> {
         if (content.isBlank()) return emptyList()
 
@@ -37,7 +37,7 @@ object ChecklistContent {
         }.getOrDefault(emptyList())
     }
 
-    // Сохранение непустых пунктов чек-листа в JSON-строку.
+
     fun serialize(items: List<ChecklistItem>): String {
         val jsonItems = JSONArray()
         items

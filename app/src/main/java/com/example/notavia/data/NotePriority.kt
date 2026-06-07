@@ -1,6 +1,6 @@
 package com.example.notavia.data
 
-// Enum ограничивает допустимые значения приоритета заметки.
+
 enum class NotePriority(val storageValue: String) {
     NONE("none"),
     HIGH("high"),

@@ -93,6 +93,24 @@ class ChecklistState {
         return mutableItems.withIndex().filter { it.value.isDone }
     }
 
+    fun snapshot(): ChecklistUiState {
+        ensureKeys()
+        val itemStates = mutableItems.mapIndexed { index, item ->
+            ChecklistItemUiState(
+                index = index,
+                key = itemKeys[index],
+                item = item,
+                isSelected = selectedIndexes.contains(index),
+            )
+        }
+        return ChecklistUiState(
+            incompleteItems = itemStates.filterNot { it.item.isDone },
+            completedItems = itemStates.filter { it.item.isDone },
+            size = mutableItems.size,
+            selectedCount = selectedIndexes.size,
+        )
+    }
+
     fun resetKeys() {
         itemKeys.clear()
         repeat(mutableItems.size) {

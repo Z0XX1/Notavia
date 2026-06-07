@@ -40,11 +40,9 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
-import com.example.notavia.data.Note
 import com.example.notavia.data.NoteCategories
 import com.example.notavia.data.NotePriority
 import com.example.notavia.data.NoteRepository
-import com.example.notavia.data.NoteType
 import com.example.notavia.data.NotaviaDatabase
 import com.example.notavia.databinding.ActivityMainBinding
 import com.example.notavia.settings.CategoryPreferences
@@ -65,14 +63,14 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.navigation.NavigationBarView
 import kotlinx.coroutines.launch
 
-// Главный экран: список заметок и чек-листов, поиск, фильтры, сортировка и режим выбора.
+
 class MainActivity : NotaviaActivity() {
-    // ViewBinding, адаптер списка и доступ к локальному хранилищу заметок.
+
     private lateinit var binding: ActivityMainBinding
     private lateinit var noteAdapter: NoteAdapter
     private lateinit var viewModel: MainViewModel
 
-    // Состояние главного экрана: текущий раздел, выбранные элементы, категории, фильтры и сортировки.
+
     private var latestUiState: MainUiState = MainUiState()
     private val categoryFilterButtons = linkedMapOf<String?, MaterialButton>()
     private val uiState: MainUiState
@@ -107,7 +105,7 @@ class MainActivity : NotaviaActivity() {
             WindowInsetsCompat.CONSUMED
         }
 
-        // Ручная обработка системных отступов для edge-to-edge режима и нижней навигации.
+
         ViewCompat.setOnApplyWindowInsetsListener(binding.main) { _, insets ->
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             val isImeVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
@@ -190,7 +188,7 @@ class MainActivity : NotaviaActivity() {
         super.onPause()
     }
 
-    // Настройка списка: обычное нажатие открывает заметку, долгое нажатие включает выбор.
+
     private fun observeUiState() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -225,7 +223,7 @@ class MainActivity : NotaviaActivity() {
         }
     }
 
-    // Подключение кнопок главного экрана, поиска, нижней навигации и действий выбора.
+
     private fun setupActions() {
         installAlphaPressFeedback(binding.addNoteFab)
         installAlphaPressFeedback(binding.remindersButton)
@@ -312,7 +310,7 @@ class MainActivity : NotaviaActivity() {
         }
     }
 
-    // Диалог добавления категории без отдельного экрана.
+
     private fun showAddCategoryDialog() {
         val input = AppCompatEditText(this).apply {
             hint = getString(R.string.category_name_hint)
@@ -389,7 +387,7 @@ class MainActivity : NotaviaActivity() {
         dialog.show()
     }
 
-    // Нормализация пользовательской категории и сохранение ее в DataStore.
+
     private fun addCustomCategory(rawCategory: String) {
         viewModel.addCustomCategory(rawCategory)
     }
@@ -409,17 +407,17 @@ class MainActivity : NotaviaActivity() {
         })
     }
 
-    // Загрузка всех заметок из Room через Repository.
+
     private fun loadNotes() {
         viewModel.loadNotes()
     }
 
-    // Единая пересборка списка: раздел, поиск, фильтры, сортировка и отправка в адаптер.
+
     private fun applySearchFilter() {
         renderUi(uiState)
     }
 
-    // Обновление видимости основных блоков интерфейса под текущее состояние экрана.
+
     private fun renderUi(state: MainUiState) {
         val isNotesSection = state.currentSection == MainSection.NOTES
         val hasVisibleNotes = state.visibleNotes.isNotEmpty()
@@ -475,7 +473,7 @@ class MainActivity : NotaviaActivity() {
         )
     }
 
-    // Подсветка иконок фильтра и сортировки при активных параметрах.
+
     private fun updateFilterSortButtons(state: MainUiState) {
         if (state.currentSection != MainSection.NOTES) return
 
@@ -499,79 +497,7 @@ class MainActivity : NotaviaActivity() {
         )
     }
 
-    private fun hasActiveFilters(): Boolean {
-        return uiState.hasActiveFilters
-    }
 
-    // Сортировка видимого списка: закрепленные элементы выше, затем выбранные правила сортировки.
-    private fun List<Note>.sortForCurrentMode(): List<Note> {
-        return sortedWith { first, second ->
-            comparePinned(first, second)
-                .takeIf { it != 0 }
-                ?: compareByCurrentSort(first, second)
-        }
-    }
-
-    private fun comparePinned(first: Note, second: Note): Int {
-        return when {
-            first.isPinned == second.isPinned -> 0
-            first.isPinned -> -1
-            else -> 1
-        }
-    }
-
-    private fun compareByCurrentSort(first: Note, second: Note): Int {
-        val sortOptions = uiState.selectedSortOptions.values.toList()
-            .ifEmpty { listOf(NoteSortOption.CREATED_NEWEST) }
-
-        sortOptions.forEach { sortOption ->
-            val optionCompare = compareBySortOption(first, second, sortOption)
-            if (optionCompare != 0) {
-                return optionCompare
-            }
-        }
-        return second.updatedAt.compareTo(first.updatedAt)
-    }
-
-    private fun compareBySortOption(first: Note, second: Note, sortOption: NoteSortOption): Int {
-        return when (sortOption) {
-            NoteSortOption.CREATED_NEWEST -> second.createdAt.compareTo(first.createdAt)
-            NoteSortOption.CREATED_OLDEST -> first.createdAt.compareTo(second.createdAt)
-            NoteSortOption.PRIORITY_HIGH_FIRST -> compareValues(
-                prioritySortRank(first, lowPriorityFirst = false),
-                prioritySortRank(second, lowPriorityFirst = false),
-            )
-            NoteSortOption.PRIORITY_LOW_FIRST -> compareValues(
-                prioritySortRank(first, lowPriorityFirst = true),
-                prioritySortRank(second, lowPriorityFirst = true),
-            )
-            NoteSortOption.DEADLINE_NEAREST -> compareDeadlines(first, second, nearestFirst = true)
-            NoteSortOption.DEADLINE_FARTHEST -> compareDeadlines(first, second, nearestFirst = false)
-        }
-    }
-
-    private fun prioritySortRank(note: Note, lowPriorityFirst: Boolean): Int {
-        return when (NotePriority.fromStorage(note.priority)) {
-            NotePriority.HIGH -> if (lowPriorityFirst) 2 else 0
-            NotePriority.MEDIUM -> 1
-            NotePriority.LOW -> if (lowPriorityFirst) 0 else 2
-            NotePriority.NONE -> 3
-        }
-    }
-
-    private fun compareDeadlines(first: Note, second: Note, nearestFirst: Boolean): Int {
-        val firstDeadline = first.deadlineAt
-        val secondDeadline = second.deadlineAt
-        return when {
-            firstDeadline == null && secondDeadline == null -> 0
-            firstDeadline == null -> 1
-            secondDeadline == null -> -1
-            nearestFirst -> firstDeadline.compareTo(secondDeadline)
-            else -> secondDeadline.compareTo(firstDeadline)
-        }
-    }
-
-    // Перерисовка горизонтальной строки категорий на главном экране.
     private fun renderCategoryFilters(state: MainUiState) {
         categoryFilterButtons.clear()
         binding.categoryFilterContainer.removeAllViews()
@@ -716,7 +642,7 @@ class MainActivity : NotaviaActivity() {
         )
     }
 
-    // Нижнее окно фильтров по приоритету, дедлайну и категории.
+
     private fun showFilterSheet() {
         val dialog = BottomSheetDialog(this)
         val content = createBottomSheetContainer()
@@ -815,7 +741,7 @@ class MainActivity : NotaviaActivity() {
         dialog.show()
     }
 
-    // Нижнее окно выбора сортировки по дате создания, приоритету и дедлайну.
+
     private fun showSortSheet() {
         val dialog = BottomSheetDialog(this)
         val content = createBottomSheetContainer()
@@ -1064,19 +990,6 @@ class MainActivity : NotaviaActivity() {
         }
     }
 
-    // Переключатели мультивыбора для групп фильтров.
-    private fun togglePriorityFilter(priority: NotePriority) {
-        viewModel.togglePriorityFilter(priority)
-    }
-
-    private fun toggleDeadlineFilter(deadlineFilter: DeadlineFilter) {
-        viewModel.toggleDeadlineFilter(deadlineFilter)
-    }
-
-    private fun toggleCategoryFilter(category: String) {
-        viewModel.toggleCategoryFilter(category)
-    }
-
     private fun createBottomSheetContainer(): LinearLayout {
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -1306,32 +1219,7 @@ class MainActivity : NotaviaActivity() {
         }
     }
 
-    private fun resetMissingCategoryFilter() {
-        // Category filters are now normalized inside MainViewModel.
-    }
 
-    private fun availableCategoryFilters(): List<String> {
-        return viewModel.availableCategoryFilters()
-    }
-
-    private fun isProtectedCategory(category: String?): Boolean {
-        return viewModel.isProtectedCategory(category)
-    }
-
-    // Подписки на DataStore с состоянием закрепленных, скрытых и пользовательских категорий.
-    private fun observePinnedCategories() {
-        // Category streams are observed by MainViewModel.
-    }
-
-    private fun observeHiddenCategories() {
-        // Category streams are observed by MainViewModel.
-    }
-
-    private fun observeCustomCategories() {
-        // Category streams are observed by MainViewModel.
-    }
-
-    // Обновление верхней панели в режиме выбора заметок или категорий.
     private fun updateSelectionTitle(state: MainUiState) {
         binding.selectionCountTextView.text = when (state.selectionMode) {
             SelectionMode.NOTES -> getString(
@@ -1390,7 +1278,7 @@ class MainActivity : NotaviaActivity() {
         viewModel.pinOrUnpinSelectedCategories()
     }
 
-    // Подтверждение удаления через BottomSheet перед изменением базы.
+
     private fun showDeleteNotesConfirmation() {
         val count = uiState.selectedNoteIds.size
         if (count == 0) return
@@ -1508,7 +1396,7 @@ class MainActivity : NotaviaActivity() {
         viewModel.deleteSelectedNotes()
     }
 
-    // Удаление категорий из заметок и обновление сохраненного состояния категорий.
+
     private fun deleteSelectedCategories() {
         viewModel.deleteSelectedCategories()
     }
@@ -1595,7 +1483,7 @@ class MainActivity : NotaviaActivity() {
         }
     }
 
-    // Внутренние типы состояния главного экрана.
+
     private data class SortChoice(
         val option: NoteSortOption?,
         val title: String,

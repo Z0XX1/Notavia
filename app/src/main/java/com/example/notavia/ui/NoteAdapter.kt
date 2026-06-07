@@ -24,7 +24,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-// Адаптер превращает объекты Note в карточки RecyclerView.
+
 class NoteAdapter(
     private val onNoteClicked: (Note) -> Unit,
     private val onNoteLongClicked: (Note) -> Unit,
@@ -53,14 +53,14 @@ class NoteAdapter(
         notifyDataSetChanged()
     }
 
-    // ViewHolder заполняет одну карточку заметки или чек-листа.
+
     class NoteViewHolder(
         private val binding: ItemNoteBinding,
         private val onNoteClicked: (Note) -> Unit,
         private val onNoteLongClicked: (Note) -> Unit,
     ) : RecyclerView.ViewHolder(binding.root) {
 
-        // Привязка данных Note к текстам, иконкам, категориям, датам и состоянию выбора.
+
         fun bind(note: Note, isSelectionMode: Boolean, isSelected: Boolean) {
             val context = binding.root.context
             val currentLocale = currentLocale()
@@ -154,7 +154,7 @@ class NoteAdapter(
             }
         }
 
-        // Короткое превью первых пунктов чек-листа внутри карточки.
+
         private fun renderChecklistPreview(content: String) {
             binding.checklistPreviewContainer.removeAllViews()
             val context = binding.root.context
@@ -239,7 +239,7 @@ class NoteAdapter(
         }
     }
 
-    // DiffUtil обновляет только изменившиеся карточки списка.
+
     class NoteDiffCallback : DiffUtil.ItemCallback<Note>() {
         override fun areItemsTheSame(oldItem: Note, newItem: Note): Boolean {
             return oldItem.id == newItem.id

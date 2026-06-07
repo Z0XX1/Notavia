@@ -34,9 +34,9 @@ import com.example.notavia.settings.SettingsViewModel
 import com.example.notavia.settings.ThemePreferences
 import kotlinx.coroutines.launch
 
-// Экран настроек внешнего вида приложения.
+
 class SettingsActivity : NotaviaActivity() {
-    // DataStore-настройки темы и размера шрифта.
+
     private lateinit var binding: ActivitySettingsBinding
     private lateinit var viewModel: SettingsViewModel
 
@@ -66,7 +66,7 @@ class SettingsActivity : NotaviaActivity() {
         observeSettings()
     }
 
-    // Подключение кнопки назад и строк настроек.
+
     private fun setupActions() {
         installAlphaPressFeedback(binding.backButton)
         installAlphaPressFeedback(binding.fontSizeRow)
@@ -90,7 +90,7 @@ class SettingsActivity : NotaviaActivity() {
         }
     }
 
-    // Чтение текущих значений темы и размера шрифта из DataStore.
+
     private fun observeSettings() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -146,7 +146,7 @@ class SettingsActivity : NotaviaActivity() {
         }
     }
 
-    // Универсальное всплывающее меню для настроек с выбранным пунктом.
+
     private fun <T> showSettingsMenu(
         anchor: View,
         options: List<SettingsOption<T>>,
@@ -259,8 +259,8 @@ class SettingsActivity : NotaviaActivity() {
         }
     }
 
-    // Сохранение темы и применение night mode через AppCompatDelegate.
-    // Сохранение масштаба шрифта и пересоздание экрана.
+
+
     private fun renderSettings(state: SettingsUiState) {
         binding.themeValueTextView.text = getString(
             if (state.theme == AppTheme.DARK) {

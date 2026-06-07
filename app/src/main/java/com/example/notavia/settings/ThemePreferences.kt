@@ -11,7 +11,7 @@ import java.io.IOException
 
 private val Context.dataStore by preferencesDataStore(name = "notavia_settings")
 
-// DataStore для выбранной темы приложения.
+
 class ThemePreferences(private val context: Context) {
     val themeFlow: Flow<AppTheme> = context.dataStore.data
         .catch { exception ->
@@ -36,7 +36,7 @@ class ThemePreferences(private val context: Context) {
     }
 }
 
-// DataStore для выбранного размера шрифта.
+
 class AppearancePreferences(private val context: Context) {
     val fontSizeFlow: Flow<AppFontSize> = context.dataStore.data
         .catch { exception ->

@@ -47,6 +47,7 @@ import com.example.notavia.databinding.ActivityEditNoteBinding
 import com.example.notavia.editor.EditNoteEffect
 import com.example.notavia.editor.EditNoteUiState
 import com.example.notavia.editor.EditNoteViewModel
+import com.example.notavia.editor.EditorCategoryState
 import com.example.notavia.editor.NoteDraft
 import com.example.notavia.settings.CategoryPreferences
 import com.example.notavia.ui.NoteCategoryUi
@@ -60,22 +61,20 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
-// Экран создания и редактирования заметок и чек-листов.
+
 class EditNoteActivity : NotaviaActivity() {
-    // Основные зависимости редактора: ViewBinding, Repository и настройки категорий.
+
     private lateinit var binding: ActivityEditNoteBinding
     private lateinit var viewModel: EditNoteViewModel
     private lateinit var repository: NoteRepository
     private lateinit var categoryPreferences: CategoryPreferences
 
-    // Состояние редактируемой записи, выбранных категорий, приоритета, дедлайна и автосохранения.
+
     private var noteId: Long = NO_NOTE_ID
     private var selectedNoteType: NoteType = NoteType.NOTE
     private val checklistItems = ChecklistState()
-    private val selectedCategories = linkedSetOf(NoteCategories.DEFAULT)
+    private val categoryState = EditorCategoryState()
     private val categoryButtons = mutableMapOf<String, MaterialButton>()
-    private val customCategories = linkedSetOf<String>()
-    private val hiddenCategories = linkedSetOf<String>()
     private var selectedPriority: NotePriority = NotePriority.NONE
     private var selectedDeadlineAt: Long? = null
     private var isDeadlinePickerExpanded: Boolean = false
@@ -155,7 +154,7 @@ class EditNoteActivity : NotaviaActivity() {
         setupBackHandling()
     }
 
-    // Подключение кнопок, текстовых полей и обработчиков изменения содержимого.
+
     private fun setupActions() {
         installAlphaPressFeedback(binding.backButton)
 
@@ -210,7 +209,7 @@ class EditNoteActivity : NotaviaActivity() {
         }
     }
 
-    // Переключение интерфейса между обычной заметкой и чек-листом.
+
     private fun updateEditorMode() {
         val isChecklist = selectedNoteType == NoteType.CHECKLIST
         binding.contentEditText.visibility = if (isChecklist) View.GONE else View.VISIBLE
@@ -221,8 +220,7 @@ class EditNoteActivity : NotaviaActivity() {
         binding.deadlineHeader.visibility = if (isChecklist) View.GONE else View.VISIBLE
         binding.deadlinePickerCardView.visibility = View.GONE
         if (isChecklist) {
-            selectedCategories.clear()
-            selectedCategories.add(NoteCategories.DEFAULT)
+            categoryState.resetSelectionToDefault()
             selectedPriority = NotePriority.NONE
             selectedDeadlineAt = null
             isDeadlinePickerExpanded = false
@@ -251,7 +249,7 @@ class EditNoteActivity : NotaviaActivity() {
         )
     }
 
-    // Перерисовка пунктов чек-листа с разделением на выполненные и невыполненные.
+
     private fun renderChecklistItems() {
         binding.checklistItemsContainer.removeAllViews()
 
@@ -342,7 +340,7 @@ class EditNoteActivity : NotaviaActivity() {
         return row
     }
 
-    // Подготовка выбора нескольких категорий для обычной заметки.
+
     private fun setupCategoryPicker() {
         renderCategoryButtons()
 
@@ -352,7 +350,7 @@ class EditNoteActivity : NotaviaActivity() {
         updateCategoryUi()
     }
 
-    // Настройка раскрывающегося выбора дедлайна через три NumberPicker.
+
     private fun setupDeadlinePicker() {
         listOf(
             binding.deadlineDayPicker,
@@ -383,7 +381,7 @@ class EditNoteActivity : NotaviaActivity() {
         }
     }
 
-    // Анимация открытия блока дедлайна и поворота стрелки.
+
     private fun setDeadlinePickerExpanded(expanded: Boolean) {
         if (isDeadlinePickerExpanded == expanded) return
 
@@ -419,7 +417,7 @@ class EditNoteActivity : NotaviaActivity() {
         }
     }
 
-    // Преобразование выбранного дня, месяца и года в timestamp дедлайна.
+
     private fun updateDeadlineFromPickers() {
         if (isUpdatingDeadlinePickers) return
 
@@ -549,7 +547,7 @@ class EditNoteActivity : NotaviaActivity() {
         }.getActualMaximum(Calendar.DAY_OF_MONTH)
     }
 
-    // Всплывающее меню выбора приоритета заметки.
+
     private fun showPriorityMenu() {
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -650,7 +648,7 @@ class EditNoteActivity : NotaviaActivity() {
         }
     }
 
-    // Диалог добавления новой категории из редактора.
+
     private fun showAddCategoryDialog() {
         val input = AppCompatEditText(this).apply {
             hint = getString(R.string.category_name_hint)
@@ -730,8 +728,7 @@ class EditNoteActivity : NotaviaActivity() {
     private fun observeHiddenCategories() {
         lifecycleScope.launch {
             categoryPreferences.hiddenCategoriesFlow.collect { categories ->
-                hiddenCategories.clear()
-                hiddenCategories.addAll(categories)
+                categoryState.setHiddenCategories(categories)
                 renderCategoryButtons()
             }
         }
@@ -740,7 +737,7 @@ class EditNoteActivity : NotaviaActivity() {
     private fun observeCustomCategories() {
         lifecycleScope.launch {
             categoryPreferences.customCategoriesFlow.collect { categories ->
-                customCategories.addAll(categories)
+                categoryState.mergeCustomCategories(categories)
                 renderCategoryButtons()
             }
         }
@@ -748,10 +745,7 @@ class EditNoteActivity : NotaviaActivity() {
 
     private fun loadCustomCategoryOptions() {
         lifecycleScope.launch {
-            val enteredCategories = customCategories.toList()
-            customCategories.clear()
-            customCategories.addAll(enteredCategories)
-            customCategories.addAll(
+            categoryState.mergeCustomCategories(
                 repository.getAllNotes()
                     .flatMap { NoteCategories.parse(it.category) }
                     .filterNot { NoteCategories.isStandard(it) || it == NoteCategories.ALL },
@@ -765,12 +759,7 @@ class EditNoteActivity : NotaviaActivity() {
         binding.categoryButtonsContainer.removeAllViews()
         addCategoryAddButton()
 
-        val categories = (NoteCategories.STANDARD + customCategories + selectedCategories)
-            .map { NoteCategories.normalize(it) }
-            .filterNot { hiddenCategories.contains(it) && !selectedCategories.contains(it) }
-            .distinct()
-
-        categories.forEach { category ->
+        categoryState.visibleCategories().forEach { category ->
             addCategoryButton(category)
         }
         updateCategoryButtons()
@@ -832,13 +821,11 @@ class EditNoteActivity : NotaviaActivity() {
         val category = NoteCategories.normalize(rawCategory)
         if (category == NoteCategories.ALL) return
 
-        if (!NoteCategories.isStandard(category)) {
-            customCategories.add(category)
-        }
+        categoryState.addCustomCategory(category)
         restoreHiddenCategory(category)
-        selectCategory(category)
+        categoryState.select(category)
         lifecycleScope.launch {
-            categoryPreferences.setCustomCategories(customCategories)
+            categoryPreferences.setCustomCategories(categoryState.custom)
         }
         renderCategoryButtons()
         updateCategoryUi()
@@ -846,48 +833,18 @@ class EditNoteActivity : NotaviaActivity() {
     }
 
     private fun restoreHiddenCategory(category: String) {
-        val normalizedCategory = NoteCategories.normalize(category)
-        if (!hiddenCategories.remove(normalizedCategory)) return
+        if (!categoryState.restoreHiddenCategory(category)) return
 
         lifecycleScope.launch {
-            categoryPreferences.setHiddenCategories(hiddenCategories)
+            categoryPreferences.setHiddenCategories(categoryState.hidden)
         }
     }
 
     private fun toggleCategory(category: String) {
-        val normalizedCategory = NoteCategories.normalize(category)
-        if (normalizedCategory == NoteCategories.DEFAULT) {
-            selectedCategories.clear()
-            selectedCategories.add(NoteCategories.DEFAULT)
-            return
-        }
-        if (normalizedCategory == NoteCategories.ALL) return
-
-        selectedCategories.remove(NoteCategories.DEFAULT)
-        if (selectedCategories.contains(normalizedCategory)) {
-            selectedCategories.remove(normalizedCategory)
-        } else {
-            selectedCategories.add(normalizedCategory)
-        }
-        if (selectedCategories.isEmpty()) {
-            selectedCategories.add(NoteCategories.DEFAULT)
-        }
+        categoryState.toggle(category)
     }
 
-    private fun selectCategory(category: String) {
-        val normalizedCategory = NoteCategories.normalize(category)
-        if (normalizedCategory == NoteCategories.DEFAULT) {
-            selectedCategories.clear()
-            selectedCategories.add(NoteCategories.DEFAULT)
-            return
-        }
-        if (normalizedCategory == NoteCategories.ALL) return
 
-        selectedCategories.remove(NoteCategories.DEFAULT)
-        selectedCategories.add(normalizedCategory)
-    }
-
-    // Загрузка существующей заметки по ID и заполнение полей редактора.
     private fun observeEditorState() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -929,16 +886,14 @@ class EditNoteActivity : NotaviaActivity() {
             if (selectedNoteType == NoteType.CHECKLIST) {
                 selectedPriority = NotePriority.NONE
                 selectedDeadlineAt = null
-                selectedCategories.clear()
-                selectedCategories.add(NoteCategories.DEFAULT)
+                categoryState.resetSelectionToDefault()
             } else {
                 selectedPriority = NotePriority.fromStorage(note.priority)
                 updatePriorityUi()
                 selectedDeadlineAt = note.deadlineAt
                 configureDeadlinePickers(selectedDeadlineAt ?: todayStartMillis())
                 updateDeadlineUi()
-                selectedCategories.clear()
-                selectedCategories.addAll(NoteCategories.parse(note.category))
+                categoryState.selectStoredCategories(note.category)
                 updateCategoryUi()
             }
         } finally {
@@ -946,14 +901,14 @@ class EditNoteActivity : NotaviaActivity() {
         }
     }
 
-    // Отложенный запуск автосохранения после изменения текста или параметров.
+
     private fun scheduleAutoSave() {
         if (isApplyingLoadedNote) return
 
         viewModel.scheduleAutoSave(currentDraft())
     }
 
-    // Защита от параллельных сохранений и повторная запись при новых изменениях.
+
     private fun requestAutoSaveNow() {
         if (isApplyingLoadedNote) return
 
@@ -967,8 +922,8 @@ class EditNoteActivity : NotaviaActivity() {
         }
     }
 
-    // Запись текущего черновика в Room через Repository.
-    // Сбор текущих значений экрана в объект для сравнения и сохранения.
+
+
     private fun currentDraft(): NoteDraft {
         return NoteDraft(
             title = binding.titleEditText.text?.toString()?.trim().orEmpty(),
@@ -980,7 +935,7 @@ class EditNoteActivity : NotaviaActivity() {
             category = if (selectedNoteType == NoteType.CHECKLIST) {
                 NoteCategories.DEFAULT
             } else {
-                NoteCategories.serialize(selectedCategories)
+                categoryState.serializeSelected()
             },
             priority = if (selectedNoteType == NoteType.CHECKLIST) {
                 NotePriority.NONE.storageValue
@@ -1043,7 +998,7 @@ class EditNoteActivity : NotaviaActivity() {
         inputMethodManager?.hideSoftInputFromWindow(focusedView.windowToken, 0)
     }
 
-    // Прокрутка редактора к курсору при открытой клавиатуре.
+
     private fun scrollToContentCursor() {
         binding.contentEditText.post {
             val layout = binding.contentEditText.layout ?: return@post
@@ -1068,16 +1023,14 @@ class EditNoteActivity : NotaviaActivity() {
         }
     }
 
-    // Синхронизация выбранных категорий с кнопками в интерфейсе.
+
     private fun updateCategoryUi() {
-        val customSelectedCategories = selectedCategories
-            .map { NoteCategories.normalize(it) }
-            .filterNot { NoteCategories.isStandard(it) }
-        customSelectedCategories.forEach { category ->
-            customCategories.add(category)
-            if (!categoryButtons.containsKey(category)) {
-                renderCategoryButtons()
-            }
+        val addedCustomCategories = categoryState.includeSelectedCustomCategories()
+        val missingSelectedButtons = categoryState.customSelectedCategories()
+            .any { category -> !categoryButtons.containsKey(category) }
+        if (addedCustomCategories || missingSelectedButtons) {
+            renderCategoryButtons()
+            return
         }
 
         updateCategoryButtons()
@@ -1087,7 +1040,7 @@ class EditNoteActivity : NotaviaActivity() {
         categoryButtons.forEach { (category, button) ->
             styleCategoryButton(
                 button,
-                isActive = selectedCategories.contains(NoteCategories.normalize(category)),
+                isActive = categoryState.isSelected(category),
             )
         }
     }
@@ -1155,5 +1108,5 @@ class EditNoteActivity : NotaviaActivity() {
         private const val DEADLINE_DATE_PATTERN = "d MMM yyyy"
     }
 
-    // Черновик используется для сравнения текущего состояния с последним сохранением.
+
 }

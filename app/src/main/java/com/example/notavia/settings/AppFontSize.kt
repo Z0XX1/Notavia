@@ -3,7 +3,7 @@ package com.example.notavia.settings
 import androidx.annotation.StringRes
 import com.example.notavia.R
 
-// Размер шрифта хранит значение DataStore, масштаб и строковый ресурс подписи.
+
 enum class AppFontSize(
     val storageValue: String,
     val fontScale: Float,

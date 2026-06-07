@@ -8,7 +8,7 @@ import androidx.core.content.ContextCompat
 import com.example.notavia.R
 import com.example.notavia.data.NotePriority
 
-// Единое место для цветов, подписей и описаний приоритетов.
+
 object NotePriorityUi {
     @ColorRes
     fun colorRes(priority: NotePriority): Int {

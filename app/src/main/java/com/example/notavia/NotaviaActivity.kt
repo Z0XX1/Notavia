@@ -14,12 +14,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import java.util.Locale
 
-// Базовая Activity применяет сохраненный масштаб шрифта ко всем экранам.
+
 abstract class NotaviaActivity : AppCompatActivity() {
     private var appliedFontSize: AppFontSize = AppFontSize.MEDIUM
     private var appliedLanguage: AppLanguage = AppLanguage.RUSSIAN
 
-    // Чтение размера шрифта до создания ресурсов экрана.
+
     override fun attachBaseContext(newBase: Context) {
         val (fontSize, language) = runBlocking {
             AppearancePreferences(newBase).fontSizeFlow.first() to

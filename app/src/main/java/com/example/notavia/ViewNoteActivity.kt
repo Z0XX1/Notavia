@@ -4,7 +4,6 @@ import android.animation.LayoutTransition
 import android.content.ClipData
 import android.content.Intent
 import android.graphics.Color
-import android.graphics.Paint
 import android.graphics.Point
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -17,7 +16,6 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
-import androidx.appcompat.widget.AppCompatImageButton
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -26,13 +24,18 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
-import com.example.notavia.checklist.ChecklistItemUiState
 import com.example.notavia.data.NotePriority
 import com.example.notavia.data.NoteRepository
 import com.example.notavia.data.NotaviaDatabase
 import com.example.notavia.databinding.ActivityViewNoteBinding
+import com.example.notavia.navigation.NoteNavigationContract.EXTRA_NOTE_ID
+import com.example.notavia.navigation.NoteNavigationContract.NO_NOTE_ID
 import com.example.notavia.ui.NoteCategoryUi
 import com.example.notavia.ui.NotePriorityUi
+import com.example.notavia.ui.currentLocale
+import com.example.notavia.ui.installAlphaPressFeedback
+import com.example.notavia.ui.resolveThemeColor
+import com.example.notavia.viewer.ChecklistViewRenderer
 import com.example.notavia.viewer.ViewNoteEffect
 import com.example.notavia.viewer.ViewNoteUiState
 import com.example.notavia.viewer.ViewNoteViewModel
@@ -41,7 +44,6 @@ import com.google.android.material.button.MaterialButton
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
-import java.util.Locale
 import kotlin.math.roundToInt
 
 
@@ -49,6 +51,7 @@ class ViewNoteActivity : NotaviaActivity() {
 
     private lateinit var binding: ActivityViewNoteBinding
     private lateinit var viewModel: ViewNoteViewModel
+    private lateinit var checklistRenderer: ChecklistViewRenderer
 
     private var noteId: Long = NO_NOTE_ID
     private var latestUiState: ViewNoteUiState = ViewNoteUiState()
@@ -64,6 +67,17 @@ class ViewNoteActivity : NotaviaActivity() {
         enableEdgeToEdge()
         binding = ActivityViewNoteBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        checklistRenderer = ChecklistViewRenderer(
+            activity = this,
+            container = binding.checklistItemsContainer,
+            onTouch = ::recordChecklistDragTouch,
+            onClick = ::handleChecklistRowClick,
+            onLongClick = ::handleChecklistRowLongClick,
+            onDrag = ::handleChecklistRowDragEvent,
+            completedItemAlpha = COMPLETED_ITEM_ALPHA,
+            draggedItemAlpha = DRAGGED_ITEM_ALPHA,
+            draggedItemScale = DRAGGED_ITEM_SCALE,
+        )
         setupChecklistContainerAnimation()
 
         ViewCompat.setOnApplyWindowInsetsListener(binding.main) { view, insets ->
@@ -139,7 +153,7 @@ class ViewNoteActivity : NotaviaActivity() {
         binding.editButton.setOnClickListener {
             if (noteId == NO_NOTE_ID) return@setOnClickListener
             val intent = Intent(this, EditNoteActivity::class.java).apply {
-                putExtra(EditNoteActivity.EXTRA_NOTE_ID, noteId)
+                putExtra(EXTRA_NOTE_ID, noteId)
             }
             startActivity(intent)
         }
@@ -297,180 +311,8 @@ class ViewNoteActivity : NotaviaActivity() {
 
 
     private fun renderChecklistItems(state: ViewNoteUiState) {
-        binding.checklistItemsContainer.removeAllViews()
-        binding.checklistItemsContainer.visibility = View.VISIBLE
+        checklistRenderer.render(state, draggedChecklistItemKey)
         binding.contentTextView.visibility = View.GONE
-
-        renderChecklistSection(
-            title = getString(R.string.checklist_incomplete_title),
-            items = state.checklist.incompleteItems,
-            isFirstSection = true,
-            isSelectionMode = state.checklist.hasSelection,
-        )
-        renderChecklistSection(
-            title = getString(R.string.checklist_completed_title),
-            items = state.checklist.completedItems,
-            isFirstSection = state.checklist.incompleteItems.isEmpty(),
-            isSelectionMode = state.checklist.hasSelection,
-        )
-    }
-
-    private fun renderChecklistSection(
-        title: String,
-        items: List<ChecklistItemUiState>,
-        isFirstSection: Boolean,
-        isSelectionMode: Boolean,
-    ) {
-        if (items.isEmpty()) return
-
-        binding.checklistItemsContainer.addView(
-            createSectionHeader(title, isFirstSection),
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-            ),
-        )
-
-        items.forEach { itemState ->
-            val index = itemState.index
-            val item = itemState.item
-            val itemKey = itemState.key
-            val isDraggedItem = draggedChecklistItemKey == itemKey
-            val row = LinearLayout(this).apply {
-                tag = itemKey
-                orientation = LinearLayout.HORIZONTAL
-                gravity = android.view.Gravity.CENTER_VERTICAL
-                setPadding(0, 4.dp, 0, 4.dp)
-                alpha = when {
-                    isDraggedItem -> DRAGGED_ITEM_ALPHA
-                    item.isDone -> COMPLETED_ITEM_ALPHA
-                    else -> 1f
-                }
-                scaleX = if (isDraggedItem) DRAGGED_ITEM_SCALE else 1f
-                scaleY = if (isDraggedItem) DRAGGED_ITEM_SCALE else 1f
-                setOnTouchListener { touchedView, event ->
-                    recordChecklistDragTouch(touchedView, event)
-                    false
-                }
-                setOnClickListener {
-                    currentChecklistIndexForRow(this)?.let { currentIndex ->
-                        if (isSelectionMode) {
-                            toggleChecklistItemSelection(currentIndex)
-                        } else {
-                            toggleChecklistItemDone(currentIndex)
-                        }
-                    }
-                }
-                setOnLongClickListener {
-                    currentChecklistIndexForRow(this)?.let { currentIndex ->
-                        handleChecklistItemLongClick(currentIndex, this)
-                    } ?: false
-                }
-                setOnDragListener { _, event ->
-                    handleChecklistItemDragEvent(event, currentChecklistIndexForRow(this))
-                }
-            }
-
-            row.addView(
-                AppCompatImageButton(this).apply {
-                    setImageResource(
-                        when {
-                            itemState.isSelected -> R.drawable.checkcircle
-                            isSelectionMode -> R.drawable.emptycircle
-                            item.isDone -> R.drawable.checkbox
-                            else -> R.drawable.emptybox
-                        },
-                    )
-                    background = android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT)
-                    setColorFilter(resolveThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant))
-                    contentDescription = item.text
-                    setPadding(10.dp, 10.dp, 10.dp, 10.dp)
-                    installAlphaPressFeedback(this)
-                    setOnClickListener {
-                        val currentIndex = currentChecklistIndexForRow(row) ?: return@setOnClickListener
-                        if (isSelectionMode) {
-                            toggleChecklistItemSelection(currentIndex)
-                        } else {
-                            toggleChecklistItemDone(currentIndex)
-                        }
-                    }
-                },
-                LinearLayout.LayoutParams(44.dp, 44.dp),
-            )
-
-            row.addView(
-                TextView(this).apply {
-                    text = item.text
-                    textSize = 18f
-                    minLines = 1
-                    maxLines = Int.MAX_VALUE
-                    gravity = android.view.Gravity.CENTER_VERTICAL
-                    setTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnBackground))
-                    setHintTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant))
-                    paintFlags = if (item.isDone) {
-                        paintFlags or Paint.STRIKE_THRU_TEXT_FLAG
-                    } else {
-                        paintFlags and Paint.STRIKE_THRU_TEXT_FLAG.inv()
-                    }
-                    setOnTouchListener { _, event ->
-                        recordChecklistDragTouch(row, event)
-                        false
-                    }
-                    setOnClickListener {
-                        currentChecklistIndexForRow(row)?.let { currentIndex ->
-                            if (isSelectionMode) {
-                                toggleChecklistItemSelection(currentIndex)
-                            } else {
-                                toggleChecklistItemDone(currentIndex)
-                            }
-                        }
-                    }
-                    setOnLongClickListener {
-                        currentChecklistIndexForRow(row)?.let { currentIndex ->
-                            handleChecklistItemLongClick(currentIndex, row)
-                        } ?: false
-                    }
-                },
-                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f),
-            )
-
-            binding.checklistItemsContainer.addView(
-                row,
-                LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                ),
-            )
-        }
-    }
-
-    private fun createSectionHeader(title: String, isFirstSection: Boolean): View {
-        return LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.CENTER_VERTICAL
-            setPadding(0, if (isFirstSection) 2.dp else 14.dp, 0, 4.dp)
-
-            addView(
-                TextView(this@ViewNoteActivity).apply {
-                    text = title
-                    textSize = 14f
-                    typeface = Typeface.DEFAULT_BOLD
-                    setTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant))
-                },
-                LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                ),
-            )
-            addView(
-                View(this@ViewNoteActivity).apply {
-                    setBackgroundColor(resolveThemeColor(com.google.android.material.R.attr.colorOutline))
-                },
-                LinearLayout.LayoutParams(0, 1.dp, 1f).apply {
-                    marginStart = 12.dp
-                },
-            )
-        }
     }
 
     private fun isChecklistSelectionMode(): Boolean {
@@ -505,6 +347,26 @@ class ViewNoteActivity : NotaviaActivity() {
         checklistDragTouchY = (event.rawY - rowLocation[1])
             .roundToInt()
             .coerceIn(0, row.height.coerceAtLeast(1))
+    }
+
+    private fun handleChecklistRowClick(row: View) {
+        currentChecklistIndexForRow(row)?.let { currentIndex ->
+            if (isChecklistSelectionMode()) {
+                toggleChecklistItemSelection(currentIndex)
+            } else {
+                toggleChecklistItemDone(currentIndex)
+            }
+        }
+    }
+
+    private fun handleChecklistRowLongClick(row: View): Boolean {
+        return currentChecklistIndexForRow(row)?.let { currentIndex ->
+            handleChecklistItemLongClick(currentIndex, row)
+        } ?: false
+    }
+
+    private fun handleChecklistRowDragEvent(row: View, event: DragEvent): Boolean {
+        return handleChecklistItemDragEvent(event, currentChecklistIndexForRow(row))
     }
 
     private fun toggleChecklistItemDone(index: Int) {
@@ -795,36 +657,8 @@ class ViewNoteActivity : NotaviaActivity() {
         return text.split('\n').size
     }
 
-    private fun installAlphaPressFeedback(view: View) {
-        view.setOnTouchListener { pressedView, event ->
-            pressedView.alpha = when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> BUTTON_PRESSED_ALPHA
-                MotionEvent.ACTION_UP,
-                MotionEvent.ACTION_CANCEL,
-                -> 1f
-                else -> pressedView.alpha
-            }
-            false
-        }
-    }
-
-    private fun resolveThemeColor(attr: Int): Int {
-        val typedValue = android.util.TypedValue()
-        theme.resolveAttribute(attr, typedValue, true)
-        return if (typedValue.resourceId != 0) {
-            ContextCompat.getColor(this, typedValue.resourceId)
-        } else {
-            typedValue.data
-        }
-    }
-
     private fun deadlineFormatter(): SimpleDateFormat {
         return SimpleDateFormat(DEADLINE_DATE_PATTERN, currentLocale())
-    }
-
-    private fun currentLocale(): Locale {
-        val locales = resources.configuration.locales
-        return if (locales.size() > 0) locales[0] else Locale.getDefault()
     }
 
     private fun isDeadlineOverdue(deadlineAt: Long): Boolean {
@@ -851,9 +685,6 @@ class ViewNoteActivity : NotaviaActivity() {
     }
 
     companion object {
-        const val EXTRA_NOTE_ID = "extra_note_id"
-        private const val NO_NOTE_ID = -1L
-        private const val BUTTON_PRESSED_ALPHA = 0.68f
         private const val COMPLETED_ITEM_ALPHA = 0.45f
         private const val DRAGGED_ITEM_ALPHA = 0f
         private const val DRAGGED_ITEM_SCALE = 1.03f

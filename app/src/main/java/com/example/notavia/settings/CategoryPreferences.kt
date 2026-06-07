@@ -13,9 +13,18 @@ import java.io.IOException
 
 private val Context.categoryDataStore by preferencesDataStore(name = "notavia_categories")
 
+interface CategorySettings {
+    val pinnedCategoriesFlow: Flow<Set<String>>
+    val hiddenCategoriesFlow: Flow<Set<String>>
+    val customCategoriesFlow: Flow<Set<String>>
 
-class CategoryPreferences(private val context: Context) {
-    val pinnedCategoriesFlow: Flow<Set<String>> = context.categoryDataStore.data
+    suspend fun setPinnedCategories(categories: Set<String>)
+    suspend fun setHiddenCategories(categories: Set<String>)
+    suspend fun setCustomCategories(categories: Set<String>)
+}
+
+class CategoryPreferences(private val context: Context) : CategorySettings {
+    override val pinnedCategoriesFlow: Flow<Set<String>> = context.categoryDataStore.data
         .catch { exception ->
             if (exception is IOException) {
                 emit(emptyPreferences())
@@ -32,7 +41,7 @@ class CategoryPreferences(private val context: Context) {
                 .orEmpty()
         }
 
-    val hiddenCategoriesFlow: Flow<Set<String>> = context.categoryDataStore.data
+    override val hiddenCategoriesFlow: Flow<Set<String>> = context.categoryDataStore.data
         .catch { exception ->
             if (exception is IOException) {
                 emit(emptyPreferences())
@@ -49,7 +58,7 @@ class CategoryPreferences(private val context: Context) {
                 .orEmpty()
         }
 
-    val customCategoriesFlow: Flow<Set<String>> = context.categoryDataStore.data
+    override val customCategoriesFlow: Flow<Set<String>> = context.categoryDataStore.data
         .catch { exception ->
             if (exception is IOException) {
                 emit(emptyPreferences())
@@ -68,7 +77,7 @@ class CategoryPreferences(private val context: Context) {
         }
 
 
-    suspend fun setPinnedCategories(categories: Set<String>) {
+    override suspend fun setPinnedCategories(categories: Set<String>) {
         context.categoryDataStore.edit { preferences ->
             val pinnedCategories = categories
                 .map { NoteCategories.normalize(it) }
@@ -83,7 +92,7 @@ class CategoryPreferences(private val context: Context) {
     }
 
 
-    suspend fun setHiddenCategories(categories: Set<String>) {
+    override suspend fun setHiddenCategories(categories: Set<String>) {
         context.categoryDataStore.edit { preferences ->
             val hiddenCategories = categories
                 .map { NoteCategories.normalize(it) }
@@ -98,7 +107,7 @@ class CategoryPreferences(private val context: Context) {
     }
 
 
-    suspend fun setCustomCategories(categories: Set<String>) {
+    override suspend fun setCustomCategories(categories: Set<String>) {
         context.categoryDataStore.edit { preferences ->
             val customCategories = categories
                 .map { NoteCategories.normalize(it) }

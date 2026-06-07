@@ -6,9 +6,9 @@ import androidx.lifecycle.viewModelScope
 import com.example.notavia.data.Note
 import com.example.notavia.data.NoteCategories
 import com.example.notavia.data.NotePriority
-import com.example.notavia.data.NoteRepository
+import com.example.notavia.data.NotesRepository
 import com.example.notavia.data.NoteType
-import com.example.notavia.settings.CategoryPreferences
+import com.example.notavia.settings.CategorySettings
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -78,23 +78,19 @@ data class MainUiState(
 }
 
 class MainViewModel(
-    private val repository: NoteRepository,
-    private val categoryPreferences: CategoryPreferences,
+    private val repository: NotesRepository,
+    private val categoryPreferences: CategorySettings,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(MainUiState())
     val uiState: StateFlow<MainUiState> = _uiState.asStateFlow()
 
     init {
+        observeNotes()
         observeCategoryPreferences()
     }
 
     fun loadNotes() {
-        viewModelScope.launch {
-            val notes = repository.getAllNotes()
-            updateAndFilter { state ->
-                state.copy(allNotes = notes)
-            }
-        }
+        refreshVisibleNotes()
     }
 
     fun setSection(section: MainSection) {
@@ -317,7 +313,6 @@ class MainViewModel(
         viewModelScope.launch {
             repository.updatePinnedState(selectedIds, shouldPin)
             exitSelectionMode()
-            loadNotes()
         }
     }
 
@@ -351,7 +346,6 @@ class MainViewModel(
         viewModelScope.launch {
             repository.deleteNotes(selectedIds)
             exitSelectionMode()
-            loadNotes()
         }
     }
 
@@ -392,7 +386,6 @@ class MainViewModel(
                     selectedCategoryNames = emptySet(),
                 )
             }
-            loadNotes()
         }
     }
 
@@ -429,6 +422,16 @@ class MainViewModel(
         return category == null || NoteCategories.isReserved(category)
     }
 
+    private fun observeNotes() {
+        viewModelScope.launch {
+            repository.notesFlow.collect { notes ->
+                updateAndFilter { state ->
+                    state.copy(allNotes = notes)
+                }
+            }
+        }
+    }
+
     private fun observeCategoryPreferences() {
         viewModelScope.launch {
             categoryPreferences.pinnedCategoriesFlow.collect { categories ->
@@ -460,6 +463,10 @@ class MainViewModel(
         _uiState.update { state ->
             updateState(state).withVisibleNotes()
         }
+    }
+
+    private fun refreshVisibleNotes() {
+        updateAndFilter { state -> state }
     }
 
     private fun MainUiState.withVisibleNotes(): MainUiState {
@@ -584,8 +591,8 @@ class MainViewModel(
     }
 
     class Factory(
-        private val repository: NoteRepository,
-        private val categoryPreferences: CategoryPreferences,
+        private val repository: NotesRepository,
+        private val categoryPreferences: CategorySettings,
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {

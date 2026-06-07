@@ -10,7 +10,7 @@ data class Note(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val title: String,
     val content: String,
-    @ColumnInfo(defaultValue = "'Без категории'")
+    @ColumnInfo(defaultValue = "'default'")
     val category: String = NoteCategories.DEFAULT,
     @ColumnInfo(defaultValue = "'none'")
     val priority: String = NotePriority.NONE.storageValue,

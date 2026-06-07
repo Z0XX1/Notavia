@@ -37,6 +37,12 @@ android {
         versionName = "1.0.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        javaCompileOptions {
+            annotationProcessorOptions {
+                argument("room.schemaLocation", "$projectDir/schemas")
+            }
+        }
     }
 
     signingConfigs {
@@ -88,10 +94,15 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
     kapt(libs.androidx.room.compiler)
     testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.json)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
 }
 
 kapt {
     correctErrorTypes = true
+    arguments {
+        arg("room.schemaLocation", "$projectDir/schemas")
+    }
 }

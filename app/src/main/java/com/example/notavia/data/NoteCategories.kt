@@ -4,16 +4,20 @@ import java.util.Locale
 
 
 object NoteCategories {
-    const val DEFAULT = "Без категории"
-    const val ALL = "Все"
+    const val DEFAULT = "default"
+    const val ALL = "all"
+    const val PERSONAL = "personal"
+    const val STUDY = "study"
+    const val WORK = "work"
+    const val IDEAS = "ideas"
     private const val SEPARATOR = "||"
 
     val STANDARD = listOf(
         DEFAULT,
-        "Личное",
-        "Учёба",
-        "Работа",
-        "Идеи",
+        PERSONAL,
+        STUDY,
+        WORK,
+        IDEAS,
     )
 
 
@@ -21,8 +25,7 @@ object NoteCategories {
         val trimmedCategory = category.trim()
         if (trimmedCategory.isBlank()) return DEFAULT
 
-        return STANDARD.firstOrNull { it.equals(trimmedCategory, ignoreCase = true) }
-            ?: formatCustomCategory(trimmedCategory)
+        return storageValueFor(trimmedCategory) ?: formatCustomCategory(trimmedCategory)
     }
 
 
@@ -99,6 +102,38 @@ object NoteCategories {
         val lowercasedCategory = category.lowercase(Locale.ROOT)
         return lowercasedCategory.replaceFirstChar { char ->
             char.titlecase(Locale.ROOT)
+        }
+    }
+
+    private fun storageValueFor(category: String): String? {
+        val normalizedInput = category.trim().lowercase(Locale.ROOT)
+        return when (normalizedInput) {
+            DEFAULT,
+            "\u0431\u0435\u0437 \u043a\u0430\u0442\u0435\u0433\u043e\u0440\u0438\u0438",
+            "no category",
+            -> DEFAULT
+            ALL,
+            "\u0432\u0441\u0435",
+            "all",
+            -> ALL
+            PERSONAL,
+            "\u043b\u0438\u0447\u043d\u043e\u0435",
+            "personal",
+            -> PERSONAL
+            STUDY,
+            "\u0443\u0447\u0435\u0431\u0430",
+            "\u0443\u0447\u0451\u0431\u0430",
+            "study",
+            -> STUDY
+            WORK,
+            "\u0440\u0430\u0431\u043e\u0442\u0430",
+            "work",
+            -> WORK
+            IDEAS,
+            "\u0438\u0434\u0435\u0438",
+            "ideas",
+            -> IDEAS
+            else -> null
         }
     }
 }

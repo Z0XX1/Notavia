@@ -8,8 +8,9 @@ import com.example.notavia.checklist.ChecklistUiState
 import com.example.notavia.data.Note
 import com.example.notavia.data.NoteCategories
 import com.example.notavia.data.NotePriority
-import com.example.notavia.data.NoteRepository
+import com.example.notavia.data.NotesRepository
 import com.example.notavia.data.NoteType
+import com.example.notavia.navigation.NoteNavigationContract.NO_NOTE_ID
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -37,7 +38,7 @@ sealed interface ViewNoteEffect {
 }
 
 class ViewNoteViewModel(
-    private val repository: NoteRepository,
+    private val repository: NotesRepository,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(ViewNoteUiState())
     val uiState: StateFlow<ViewNoteUiState> = _uiState.asStateFlow()
@@ -272,7 +273,7 @@ class ViewNoteViewModel(
     }
 
     class Factory(
-        private val repository: NoteRepository,
+        private val repository: NotesRepository,
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -284,7 +285,6 @@ class ViewNoteViewModel(
     }
 
     private companion object {
-        const val NO_NOTE_ID = -1L
         const val AUTO_SAVE_DELAY_MS = 450L
     }
 }

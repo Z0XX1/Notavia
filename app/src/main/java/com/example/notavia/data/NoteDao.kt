@@ -4,13 +4,14 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.Query
 import androidx.room.Update
+import kotlinx.coroutines.flow.Flow
 
 
 @Dao
 interface NoteDao {
 
     @Query("SELECT * FROM notes ORDER BY isPinned DESC, updatedAt DESC")
-    suspend fun getAllNotes(): List<Note>
+    fun observeAllNotes(): Flow<List<Note>>
 
     @Query("SELECT * FROM notes WHERE id = :id LIMIT 1")
     suspend fun getNoteById(id: Long): Note?

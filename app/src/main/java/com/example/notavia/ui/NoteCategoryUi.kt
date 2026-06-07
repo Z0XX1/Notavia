@@ -20,16 +20,11 @@ object NoteCategoryUi {
     private fun labelRes(category: String): Int? {
         return when (NoteCategories.normalize(category)) {
             NoteCategories.DEFAULT -> R.string.category_default
-            PERSONAL -> R.string.category_personal
-            STUDY -> R.string.category_study
-            WORK -> R.string.category_work
-            IDEAS -> R.string.category_ideas
+            NoteCategories.PERSONAL -> R.string.category_personal
+            NoteCategories.STUDY -> R.string.category_study
+            NoteCategories.WORK -> R.string.category_work
+            NoteCategories.IDEAS -> R.string.category_ideas
             else -> null
         }
     }
-
-    private const val PERSONAL = "Личное"
-    private const val STUDY = "Учёба"
-    private const val WORK = "Работа"
-    private const val IDEAS = "Идеи"
 }

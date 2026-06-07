@@ -11,9 +11,26 @@ import java.io.IOException
 
 private val Context.dataStore by preferencesDataStore(name = "notavia_settings")
 
+interface ThemeSettings {
+    val themeFlow: Flow<AppTheme>
 
-class ThemePreferences(private val context: Context) {
-    val themeFlow: Flow<AppTheme> = context.dataStore.data
+    suspend fun setTheme(theme: AppTheme)
+}
+
+interface AppearanceSettings {
+    val fontSizeFlow: Flow<AppFontSize>
+
+    suspend fun setFontSize(fontSize: AppFontSize)
+}
+
+interface LanguageSettings {
+    val languageFlow: Flow<AppLanguage>
+
+    suspend fun setLanguage(language: AppLanguage)
+}
+
+class ThemePreferences(private val context: Context) : ThemeSettings {
+    override val themeFlow: Flow<AppTheme> = context.dataStore.data
         .catch { exception ->
             if (exception is IOException) {
                 emit(androidx.datastore.preferences.core.emptyPreferences())
@@ -25,7 +42,7 @@ class ThemePreferences(private val context: Context) {
             AppTheme.fromStorage(preferences[Keys.THEME_MODE])
         }
 
-    suspend fun setTheme(theme: AppTheme) {
+    override suspend fun setTheme(theme: AppTheme) {
         context.dataStore.edit { preferences ->
             preferences[Keys.THEME_MODE] = theme.storageValue
         }
@@ -37,8 +54,8 @@ class ThemePreferences(private val context: Context) {
 }
 
 
-class AppearancePreferences(private val context: Context) {
-    val fontSizeFlow: Flow<AppFontSize> = context.dataStore.data
+class AppearancePreferences(private val context: Context) : AppearanceSettings {
+    override val fontSizeFlow: Flow<AppFontSize> = context.dataStore.data
         .catch { exception ->
             if (exception is IOException) {
                 emit(androidx.datastore.preferences.core.emptyPreferences())
@@ -50,7 +67,7 @@ class AppearancePreferences(private val context: Context) {
             AppFontSize.fromStorage(preferences[Keys.FONT_SIZE])
         }
 
-    suspend fun setFontSize(fontSize: AppFontSize) {
+    override suspend fun setFontSize(fontSize: AppFontSize) {
         context.dataStore.edit { preferences ->
             preferences[Keys.FONT_SIZE] = fontSize.storageValue
         }
@@ -61,8 +78,8 @@ class AppearancePreferences(private val context: Context) {
     }
 }
 
-class LanguagePreferences(private val context: Context) {
-    val languageFlow: Flow<AppLanguage> = context.dataStore.data
+class LanguagePreferences(private val context: Context) : LanguageSettings {
+    override val languageFlow: Flow<AppLanguage> = context.dataStore.data
         .catch { exception ->
             if (exception is IOException) {
                 emit(androidx.datastore.preferences.core.emptyPreferences())
@@ -74,7 +91,7 @@ class LanguagePreferences(private val context: Context) {
             AppLanguage.fromStorage(preferences[Keys.LANGUAGE])
         }
 
-    suspend fun setLanguage(language: AppLanguage) {
+    override suspend fun setLanguage(language: AppLanguage) {
         context.dataStore.edit { preferences ->
             preferences[Keys.LANGUAGE] = language.storageValue
         }

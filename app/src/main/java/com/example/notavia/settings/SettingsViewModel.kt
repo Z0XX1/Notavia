@@ -25,9 +25,9 @@ sealed interface SettingsEffect {
 }
 
 class SettingsViewModel(
-    private val themePreferences: ThemePreferences,
-    private val appearancePreferences: AppearancePreferences,
-    private val languagePreferences: LanguagePreferences,
+    private val themePreferences: ThemeSettings,
+    private val appearancePreferences: AppearanceSettings,
+    private val languagePreferences: LanguageSettings,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
@@ -85,9 +85,9 @@ class SettingsViewModel(
     }
 
     class Factory(
-        private val themePreferences: ThemePreferences,
-        private val appearancePreferences: AppearancePreferences,
-        private val languagePreferences: LanguagePreferences,
+        private val themePreferences: ThemeSettings,
+        private val appearancePreferences: AppearanceSettings,
+        private val languagePreferences: LanguageSettings,
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {

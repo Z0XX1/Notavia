@@ -5,7 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.notavia.data.ChecklistContent
 import com.example.notavia.data.Note
-import com.example.notavia.data.NoteRepository
+import com.example.notavia.data.NotesRepository
 import com.example.notavia.data.NoteType
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -48,7 +48,7 @@ sealed interface EditNoteEffect {
 }
 
 class EditNoteViewModel(
-    private val repository: NoteRepository,
+    private val repository: NotesRepository,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(EditNoteUiState())
     val uiState: StateFlow<EditNoteUiState> = _uiState.asStateFlow()
@@ -177,7 +177,7 @@ class EditNoteViewModel(
     }
 
     class Factory(
-        private val repository: NoteRepository,
+        private val repository: NotesRepository,
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {

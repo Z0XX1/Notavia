@@ -33,6 +33,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.widget.doAfterTextChanged
 import androidx.lifecycle.lifecycleScope
+import com.example.notavia.checklist.ChecklistState
 import com.example.notavia.data.ChecklistContent
 import com.example.notavia.data.ChecklistItem
 import com.example.notavia.data.Note
@@ -67,7 +68,7 @@ class EditNoteActivity : NotaviaActivity() {
     private var noteId: Long = NO_NOTE_ID
     private var existingNote: Note? = null
     private var selectedNoteType: NoteType = NoteType.NOTE
-    private val checklistItems = mutableListOf<ChecklistItem>()
+    private val checklistItems = ChecklistState()
     private val selectedCategories = linkedSetOf(NoteCategories.DEFAULT)
     private val categoryButtons = mutableMapOf<String, MaterialButton>()
     private val customCategories = linkedSetOf<String>()
@@ -230,7 +231,7 @@ class EditNoteActivity : NotaviaActivity() {
         val text = binding.checklistItemEditText.text?.toString()?.trim().orEmpty()
         if (text.isBlank()) return
 
-        checklistItems.add(ChecklistItem(text = text))
+        checklistItems.add(text)
         binding.checklistItemEditText.text?.clear()
         updateChecklistInputHint()
         renderChecklistItems()
@@ -250,11 +251,11 @@ class EditNoteActivity : NotaviaActivity() {
 
         renderChecklistSection(
             title = getString(R.string.checklist_incomplete_title),
-            indexedItems = checklistItems.withIndex().filter { !it.value.isDone },
+            indexedItems = checklistItems.incompleteItems(),
         )
         renderChecklistSection(
             title = getString(R.string.checklist_completed_title),
-            indexedItems = checklistItems.withIndex().filter { it.value.isDone },
+            indexedItems = checklistItems.completedItems(),
         )
     }
 
@@ -294,7 +295,7 @@ class EditNoteActivity : NotaviaActivity() {
             setColorFilter(resolveThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant))
             installAlphaPressFeedback(this)
             setOnClickListener {
-                checklistItems[index] = item.copy(isDone = !item.isDone)
+                checklistItems.toggleDone(index)
                 renderChecklistItems()
                 scheduleAutoSave()
             }
@@ -324,11 +325,11 @@ class EditNoteActivity : NotaviaActivity() {
             setColorFilter(resolveThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant))
             installAlphaPressFeedback(this)
             setOnClickListener {
-                    checklistItems.removeAt(index)
-                    updateChecklistInputHint()
-                    renderChecklistItems()
-                    scheduleAutoSave()
-                }
+                checklistItems.removeAt(index)
+                updateChecklistInputHint()
+                renderChecklistItems()
+                scheduleAutoSave()
+            }
         }
         row.addView(deleteButton, LinearLayout.LayoutParams(dp(44), dp(44)))
 
@@ -896,8 +897,7 @@ class EditNoteActivity : NotaviaActivity() {
                 updateEditorMode()
                 binding.titleEditText.setText(note.title)
                 if (selectedNoteType == NoteType.CHECKLIST) {
-                    checklistItems.clear()
-                    checklistItems.addAll(ChecklistContent.parse(note.content))
+                    checklistItems.replaceWithContent(note.content)
                     updateChecklistInputHint()
                     renderChecklistItems()
                 } else {
@@ -1007,7 +1007,7 @@ class EditNoteActivity : NotaviaActivity() {
         return NoteDraft(
             title = binding.titleEditText.text?.toString()?.trim().orEmpty(),
             content = if (selectedNoteType == NoteType.CHECKLIST) {
-                ChecklistContent.serialize(checklistItems)
+                checklistItems.serialize()
             } else {
                 binding.contentEditText.text?.toString().orEmpty()
             },

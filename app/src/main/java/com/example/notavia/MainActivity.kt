@@ -35,7 +35,10 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isVisible
 import androidx.core.view.updatePadding
 import androidx.core.widget.doAfterTextChanged
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.notavia.data.Note
 import com.example.notavia.data.NoteCategories
@@ -45,6 +48,13 @@ import com.example.notavia.data.NoteType
 import com.example.notavia.data.NotaviaDatabase
 import com.example.notavia.databinding.ActivityMainBinding
 import com.example.notavia.settings.CategoryPreferences
+import com.example.notavia.main.DeadlineFilter
+import com.example.notavia.main.MainSection
+import com.example.notavia.main.MainUiState
+import com.example.notavia.main.MainViewModel
+import com.example.notavia.main.NoteSortOption
+import com.example.notavia.main.SelectionMode
+import com.example.notavia.main.SortGroup
 import com.example.notavia.ui.NoteAdapter
 import com.example.notavia.ui.NoteCategoryUi
 import com.example.notavia.ui.NotePriorityUi
@@ -60,31 +70,13 @@ class MainActivity : NotaviaActivity() {
     // ViewBinding, адаптер списка и доступ к локальному хранилищу заметок.
     private lateinit var binding: ActivityMainBinding
     private lateinit var noteAdapter: NoteAdapter
-    private lateinit var repository: NoteRepository
-    private lateinit var categoryPreferences: CategoryPreferences
+    private lateinit var viewModel: MainViewModel
 
     // Состояние главного экрана: текущий раздел, выбранные элементы, категории, фильтры и сортировки.
-    private var currentSection: MainSection = MainSection.NOTES
-    private var allNotes: List<Note> = emptyList()
-    private var visibleNotes: List<Note> = emptyList()
-    private val selectedNoteIds = linkedSetOf<Long>()
-    private val selectedCategoryNames = linkedSetOf<String>()
-    private val pinnedCategoryNames = linkedSetOf<String>()
-    private val hiddenCategoryNames = linkedSetOf<String>()
-    private val customCategoryNames = linkedSetOf<String>()
-    private var selectionMode: SelectionMode = SelectionMode.NONE
-    private var searchQuery: String = ""
-    private val selectedCategoryFilters = linkedSetOf<String>()
-    private val selectedPriorityFilters = linkedSetOf<NotePriority>()
-    private val selectedDeadlineFilters = linkedSetOf<DeadlineFilter>()
-    private val selectedSortOptions = linkedMapOf<SortGroup, NoteSortOption>()
+    private var latestUiState: MainUiState = MainUiState()
     private val categoryFilterButtons = linkedMapOf<String?, MaterialButton>()
-    private val isSelectionMode: Boolean
-        get() = selectionMode != SelectionMode.NONE
-    private val isNoteSelectionMode: Boolean
-        get() = selectionMode == SelectionMode.NOTES
-    private val isCategorySelectionMode: Boolean
-        get() = selectionMode == SelectionMode.CATEGORIES
+    private val uiState: MainUiState
+        get() = viewModel.uiState.value
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -155,16 +147,19 @@ class MainActivity : NotaviaActivity() {
             insets
         }
 
-        repository = NoteRepository(NotaviaDatabase.getDatabase(this).noteDao())
-        categoryPreferences = CategoryPreferences(this)
+        viewModel = ViewModelProvider(
+            this,
+            MainViewModel.Factory(
+                NoteRepository(NotaviaDatabase.getDatabase(this).noteDao()),
+                CategoryPreferences(this),
+            ),
+        )[MainViewModel::class.java]
 
         setupRecyclerView()
         setupActions()
         setupBackHandling()
-        observePinnedCategories()
-        observeHiddenCategories()
-        observeCustomCategories()
-        renderUi()
+        observeUiState()
+        renderUi(latestUiState)
     }
 
     private fun setupBottomBarLayers() {
@@ -187,7 +182,7 @@ class MainActivity : NotaviaActivity() {
 
     override fun onResume() {
         super.onResume()
-        loadNotes()
+        viewModel.loadNotes()
     }
 
     override fun onPause() {
@@ -196,18 +191,29 @@ class MainActivity : NotaviaActivity() {
     }
 
     // Настройка списка: обычное нажатие открывает заметку, долгое нажатие включает выбор.
+    private fun observeUiState() {
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.uiState.collect { state ->
+                    latestUiState = state
+                    renderUi(state)
+                }
+            }
+        }
+    }
+
     private fun setupRecyclerView() {
         noteAdapter = NoteAdapter(
             onNoteClicked = { note ->
-                if (isNoteSelectionMode) {
-                    toggleSelection(note.id)
-                } else if (!isCategorySelectionMode) {
+                if (uiState.isNoteSelectionMode) {
+                    viewModel.toggleNoteSelection(note.id)
+                } else if (!uiState.isCategorySelectionMode) {
                     openViewer(note.id)
                 }
             },
             onNoteLongClicked = { note ->
-                if (!isSelectionMode) {
-                    enterNoteSelectionMode(note.id)
+                if (!uiState.isSelectionMode) {
+                    viewModel.enterNoteSelectionMode(note.id)
                 }
             },
         )
@@ -257,51 +263,50 @@ class MainActivity : NotaviaActivity() {
         }
 
         binding.searchEditText.doAfterTextChanged { editable ->
-            searchQuery = editable?.toString().orEmpty()
-            applySearchFilter()
+            viewModel.setSearchQuery(editable?.toString().orEmpty())
         }
 
         binding.bottomNavigationView.selectedItemId = R.id.navigation_notes
         binding.bottomNavigationView.setOnItemSelectedListener(
             NavigationBarView.OnItemSelectedListener { item ->
-                currentSection = when (item.itemId) {
+                val section = when (item.itemId) {
                     R.id.navigation_notes -> MainSection.NOTES
                     R.id.navigation_checklists -> MainSection.CHECKLISTS
                     else -> return@OnItemSelectedListener false
                 }
-                if (currentSection != MainSection.NOTES) {
-                    exitSelectionMode()
-                    clearChecklistOnlyControls()
+                if (section != MainSection.NOTES) {
+                    binding.searchEditText.text?.clear()
+                    clearSearchFocus()
                 }
-                applySearchFilter()
+                viewModel.setSection(section)
                 true
             },
         )
 
         binding.closeSelectionButton.setOnClickListener {
-            exitSelectionMode()
+            viewModel.exitSelectionMode()
         }
 
         binding.selectAllButton.setOnClickListener {
-            when (selectionMode) {
-                SelectionMode.NOTES -> selectAllVisibleNotes()
-                SelectionMode.CATEGORIES -> selectAllCategories()
+            when (uiState.selectionMode) {
+                SelectionMode.NOTES -> viewModel.selectAllVisibleNotes()
+                SelectionMode.CATEGORIES -> viewModel.selectAllCategories()
                 SelectionMode.NONE -> Unit
             }
         }
 
         binding.pinSelectedButton.setOnClickListener {
-            when (selectionMode) {
-                SelectionMode.NOTES -> pinOrUnpinSelectedNotes()
-                SelectionMode.CATEGORIES -> pinOrUnpinSelectedCategories()
+            when (uiState.selectionMode) {
+                SelectionMode.NOTES -> viewModel.pinOrUnpinSelectedNotes()
+                SelectionMode.CATEGORIES -> viewModel.pinOrUnpinSelectedCategories()
                 SelectionMode.NONE -> Unit
             }
         }
 
         binding.deleteSelectedButton.setOnClickListener {
-            when (selectionMode) {
+            when (uiState.selectionMode) {
                 SelectionMode.NOTES -> showDeleteNotesConfirmation()
-                SelectionMode.CATEGORIES -> deleteSelectedCategories()
+                SelectionMode.CATEGORIES -> viewModel.deleteSelectedCategories()
                 SelectionMode.NONE -> Unit
             }
         }
@@ -386,26 +391,14 @@ class MainActivity : NotaviaActivity() {
 
     // Нормализация пользовательской категории и сохранение ее в DataStore.
     private fun addCustomCategory(rawCategory: String) {
-        val category = NoteCategories.normalize(rawCategory)
-        if (NoteCategories.isReserved(category)) return
-
-        if (!NoteCategories.isStandard(category)) {
-            customCategoryNames.add(category)
-        }
-        hiddenCategoryNames.remove(category)
-        renderUi()
-
-        lifecycleScope.launch {
-            categoryPreferences.setCustomCategories(customCategoryNames)
-            categoryPreferences.setHiddenCategories(hiddenCategoryNames)
-        }
+        viewModel.addCustomCategory(rawCategory)
     }
 
     private fun setupBackHandling() {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                if (isSelectionMode) {
-                    exitSelectionMode()
+                if (uiState.isSelectionMode) {
+                    viewModel.exitSelectionMode()
                 } else if (binding.searchEditText.hasFocus()) {
                     clearSearchFocus()
                 } else {
@@ -418,105 +411,75 @@ class MainActivity : NotaviaActivity() {
 
     // Загрузка всех заметок из Room через Repository.
     private fun loadNotes() {
-        lifecycleScope.launch {
-            allNotes = repository.getAllNotes()
-            applySearchFilter()
-        }
+        viewModel.loadNotes()
     }
 
     // Единая пересборка списка: раздел, поиск, фильтры, сортировка и отправка в адаптер.
     private fun applySearchFilter() {
-        resetMissingCategoryFilter()
-
-        visibleNotes = allNotes.filter { note ->
-            val matchesSection = NoteType.fromStorage(note.type) == currentSection.noteType
-            val matchesSearch = searchQuery.isBlank() ||
-                note.title.contains(searchQuery, ignoreCase = true)
-            val matchesCategory = selectedCategoryFilters.isEmpty() ||
-                selectedCategoryFilters.any { category ->
-                    NoteCategories.contains(note.category, category)
-                }
-            val matchesPriority = selectedPriorityFilters.isEmpty() ||
-                NotePriority.fromStorage(note.priority) in selectedPriorityFilters
-            val matchesDeadline = selectedDeadlineFilters.isEmpty() ||
-                selectedDeadlineFilters.any { deadlineFilter ->
-                    when (deadlineFilter) {
-                        DeadlineFilter.WITH_DEADLINE -> note.deadlineAt != null
-                        DeadlineFilter.WITHOUT_DEADLINE -> note.deadlineAt == null
-                    }
-                }
-
-            matchesSection && matchesSearch && matchesCategory && matchesPriority && matchesDeadline
-        }.sortForCurrentMode()
-
-        if (selectedNoteIds.isNotEmpty()) {
-            val existingIds = allNotes.map { it.id }.toSet()
-            selectedNoteIds.retainAll(existingIds)
-        }
-
-        noteAdapter.submitList(visibleNotes)
-        renderUi()
+        renderUi(uiState)
     }
 
     // Обновление видимости основных блоков интерфейса под текущее состояние экрана.
-    private fun renderUi() {
-        val isNotesSection = currentSection == MainSection.NOTES
-        val hasVisibleNotes = visibleNotes.isNotEmpty()
-        val showSearch = isNotesSection && !isSelectionMode
-        val showCategoryFilter = isNotesSection && !isNoteSelectionMode
+    private fun renderUi(state: MainUiState) {
+        val isNotesSection = state.currentSection == MainSection.NOTES
+        val hasVisibleNotes = state.visibleNotes.isNotEmpty()
+        val showSearch = isNotesSection && !state.isSelectionMode
+        val showCategoryFilter = isNotesSection && !state.isNoteSelectionMode
 
         binding.screenTitleTextView.setText(
             if (isNotesSection) R.string.notes_title else R.string.checklists_title,
         )
-        binding.defaultTopBar.isVisible = !isSelectionMode
-        binding.selectionTopBar.isVisible = isSelectionMode
+        binding.defaultTopBar.isVisible = !state.isSelectionMode
+        binding.selectionTopBar.isVisible = state.isSelectionMode
         binding.searchActionsRow.isVisible = showSearch
         binding.searchCardView.isVisible = showSearch
         binding.categoryFilterScrollView.isVisible = showCategoryFilter
         binding.checklistsPlaceholderGroup.isVisible = false
-        binding.bottomNavigationView.isVisible = !isSelectionMode
-        binding.bottomNavigationBackgroundView.isVisible = !isSelectionMode
-        binding.selectionActionBar.isVisible = isSelectionMode
+        binding.bottomNavigationView.isVisible = !state.isSelectionMode
+        binding.bottomNavigationBackgroundView.isVisible = !state.isSelectionMode
+        binding.selectionActionBar.isVisible = state.isSelectionMode
 
         binding.notesRecyclerView.isVisible = hasVisibleNotes
         binding.emptyStateGroup.isVisible = !hasVisibleNotes
-        binding.addNoteFab.isVisible = !isSelectionMode
+        binding.addNoteFab.isVisible = !state.isSelectionMode
         binding.addNoteFab.bringToFront()
 
-        if (isSelectionMode) {
-            updateSelectionTitle()
+        noteAdapter.submitList(state.visibleNotes)
+
+        if (state.isSelectionMode) {
+            updateSelectionTitle(state)
         }
 
-        updateEmptyState()
-        updateFilterSortButtons()
+        updateEmptyState(state)
+        updateFilterSortButtons(state)
         updateSelectionControls()
-        renderCategoryFilters()
-        noteAdapter.updateSelectionState(isNoteSelectionMode, selectedNoteIds)
+        renderCategoryFilters(state)
+        noteAdapter.updateSelectionState(state.isNoteSelectionMode, state.selectedNoteIds)
     }
 
-    private fun updateEmptyState() {
-        val hasSearch = searchQuery.isNotBlank() || hasActiveFilters()
+    private fun updateEmptyState(state: MainUiState) {
+        val hasSearch = state.searchQuery.isNotBlank() || state.hasActiveFilters
         binding.emptyTitleTextView.text = getString(
             when {
                 hasSearch -> R.string.empty_search_title
-                currentSection == MainSection.CHECKLISTS -> R.string.empty_checklists_title
+                state.currentSection == MainSection.CHECKLISTS -> R.string.empty_checklists_title
                 else -> R.string.empty_state_title
             },
         )
         binding.emptyMessageTextView.text = getString(
             when {
                 hasSearch -> R.string.empty_search_message
-                currentSection == MainSection.CHECKLISTS -> R.string.empty_checklists_message
+                state.currentSection == MainSection.CHECKLISTS -> R.string.empty_checklists_message
                 else -> R.string.empty_state_message
             },
         )
     }
 
     // Подсветка иконок фильтра и сортировки при активных параметрах.
-    private fun updateFilterSortButtons() {
-        if (currentSection != MainSection.NOTES) return
+    private fun updateFilterSortButtons(state: MainUiState) {
+        if (state.currentSection != MainSection.NOTES) return
 
-        val filtersActive = hasActiveFilters()
+        val filtersActive = state.hasActiveFilters
         binding.filterButton.setImageResource(
             if (filtersActive) R.drawable.filter else R.drawable.filteroff,
         )
@@ -528,7 +491,7 @@ class MainActivity : NotaviaActivity() {
             },
         )
         binding.sortButton.imageTintList = ColorStateList.valueOf(
-            if (selectedSortOptions.isNotEmpty()) {
+            if (state.selectedSortOptions.isNotEmpty()) {
                 ContextCompat.getColor(this, R.color.selection_stroke_color)
             } else {
                 resolveThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant)
@@ -537,9 +500,7 @@ class MainActivity : NotaviaActivity() {
     }
 
     private fun hasActiveFilters(): Boolean {
-        return selectedCategoryFilters.isNotEmpty() ||
-            selectedPriorityFilters.isNotEmpty() ||
-            selectedDeadlineFilters.isNotEmpty()
+        return uiState.hasActiveFilters
     }
 
     // Сортировка видимого списка: закрепленные элементы выше, затем выбранные правила сортировки.
@@ -560,7 +521,7 @@ class MainActivity : NotaviaActivity() {
     }
 
     private fun compareByCurrentSort(first: Note, second: Note): Int {
-        val sortOptions = selectedSortOptions.values.toList()
+        val sortOptions = uiState.selectedSortOptions.values.toList()
             .ifEmpty { listOf(NoteSortOption.CREATED_NEWEST) }
 
         sortOptions.forEach { sortOption ->
@@ -611,23 +572,23 @@ class MainActivity : NotaviaActivity() {
     }
 
     // Перерисовка горизонтальной строки категорий на главном экране.
-    private fun renderCategoryFilters() {
+    private fun renderCategoryFilters(state: MainUiState) {
         categoryFilterButtons.clear()
         binding.categoryFilterContainer.removeAllViews()
 
         if (
-            currentSection != MainSection.NOTES ||
-            isNoteSelectionMode
+            state.currentSection != MainSection.NOTES ||
+            state.isNoteSelectionMode
         ) {
             return
         }
 
         addCategoryAddButton()
         addCategoryFilterButton(null, getString(R.string.all_categories))
-        availableCategoryFilters().forEach { category ->
+        viewModel.availableCategoryFilters().forEach { category ->
             addCategoryFilterButton(category, NoteCategoryUi.displayName(this, category))
         }
-        updateCategoryFilterButtons()
+        updateCategoryFilterButtons(state)
     }
 
     private fun addCategoryAddButton() {
@@ -666,21 +627,19 @@ class MainActivity : NotaviaActivity() {
             rippleColor = ColorStateList.valueOf(Color.TRANSPARENT)
             setPadding(dp(12), 0, dp(12), 0)
             setOnClickListener {
-                if (isCategorySelectionMode) {
-                    if (!isProtectedCategory(category)) {
-                        category?.let { toggleCategorySelection(it) }
+                if (uiState.isCategorySelectionMode) {
+                    if (!viewModel.isProtectedCategory(category)) {
+                        category?.let { viewModel.toggleCategorySelection(it) }
                     }
                 } else {
-                    selectedCategoryFilters.clear()
-                    category?.let { selectedCategoryFilters.add(NoteCategories.normalize(it)) }
+                    viewModel.selectSingleCategoryFilter(category)
                     clearSearchFocus()
-                    applySearchFilter()
                 }
             }
             setOnLongClickListener {
-                if (!isProtectedCategory(category)) {
+                if (!viewModel.isProtectedCategory(category)) {
                     category?.let {
-                        enterCategorySelectionMode(it)
+                        viewModel.enterCategorySelectionMode(it)
                     }
                     true
                 } else {
@@ -698,25 +657,25 @@ class MainActivity : NotaviaActivity() {
         categoryFilterButtons[category] = button
     }
 
-    private fun updateCategoryFilterButtons() {
+    private fun updateCategoryFilterButtons(state: MainUiState) {
         categoryFilterButtons.forEach { (category, button) ->
-            val isActive = if (isCategorySelectionMode) {
+            val isActive = if (state.isCategorySelectionMode) {
                 category != null &&
-                    !isProtectedCategory(category) &&
-                    selectedCategoryNames.contains(category)
+                    !viewModel.isProtectedCategory(category) &&
+                    state.selectedCategoryNames.contains(category)
             } else {
                 if (category == null) {
-                    selectedCategoryFilters.isEmpty()
+                    state.selectedCategoryFilters.isEmpty()
                 } else {
-                    selectedCategoryFilters.contains(category)
+                    state.selectedCategoryFilters.contains(category)
                 }
             }
             styleCategoryFilterButton(
                 button,
                 isActive = isActive,
                 isPinned = category != null &&
-                    !isProtectedCategory(category) &&
-                    pinnedCategoryNames.contains(category),
+                    !viewModel.isProtectedCategory(category) &&
+                    state.pinnedCategoryNames.contains(category),
             )
         }
     }
@@ -774,10 +733,10 @@ class MainActivity : NotaviaActivity() {
         content.addView(
             createSheetOptionRow(
                 title = getString(R.string.filter_any),
-                isSelected = { selectedPriorityFilters.isEmpty() },
+                isSelected = { uiState.selectedPriorityFilters.isEmpty() },
                 registerSelectionUpdater = filterRowRefreshers::add,
             ) {
-                selectedPriorityFilters.clear()
+                viewModel.clearPriorityFilters()
                 onFilterChanged()
             },
         )
@@ -789,7 +748,7 @@ class MainActivity : NotaviaActivity() {
         ).forEach { priority ->
             content.addView(
                 createPriorityFilterRow(priority, filterRowRefreshers::add) {
-                    togglePriorityFilter(priority)
+                    viewModel.togglePriorityFilter(priority)
                     onFilterChanged()
                 },
             )
@@ -799,10 +758,10 @@ class MainActivity : NotaviaActivity() {
         content.addView(
             createSheetOptionRow(
                 title = getString(R.string.filter_any),
-                isSelected = { selectedDeadlineFilters.isEmpty() },
+                isSelected = { uiState.selectedDeadlineFilters.isEmpty() },
                 registerSelectionUpdater = filterRowRefreshers::add,
             ) {
-                selectedDeadlineFilters.clear()
+                viewModel.clearDeadlineFilters()
                 onFilterChanged()
             },
         )
@@ -810,10 +769,10 @@ class MainActivity : NotaviaActivity() {
             content.addView(
                 createSheetOptionRow(
                     title = deadlineFilter.title(),
-                    isSelected = { selectedDeadlineFilters.contains(deadlineFilter) },
+                    isSelected = { uiState.selectedDeadlineFilters.contains(deadlineFilter) },
                     registerSelectionUpdater = filterRowRefreshers::add,
                 ) {
-                    toggleDeadlineFilter(deadlineFilter)
+                    viewModel.toggleDeadlineFilter(deadlineFilter)
                     onFilterChanged()
                 },
             )
@@ -823,21 +782,21 @@ class MainActivity : NotaviaActivity() {
         content.addView(
             createSheetOptionRow(
                 title = getString(R.string.filter_any),
-                isSelected = { selectedCategoryFilters.isEmpty() },
+                isSelected = { uiState.selectedCategoryFilters.isEmpty() },
                 registerSelectionUpdater = filterRowRefreshers::add,
             ) {
-                selectedCategoryFilters.clear()
+                viewModel.clearCategoryFilters()
                 onFilterChanged()
             },
         )
-        availableCategoryFilters().forEach { category ->
+        viewModel.availableCategoryFilters().forEach { category ->
             content.addView(
                 createSheetOptionRow(
                     title = NoteCategoryUi.displayName(this, category),
-                    isSelected = { selectedCategoryFilters.contains(category) },
+                    isSelected = { uiState.selectedCategoryFilters.contains(category) },
                     registerSelectionUpdater = filterRowRefreshers::add,
                 ) {
-                    toggleCategoryFilter(category)
+                    viewModel.toggleCategoryFilter(category)
                     onFilterChanged()
                 },
             )
@@ -845,11 +804,8 @@ class MainActivity : NotaviaActivity() {
 
         content.addView(
             createResetFiltersButton {
-                selectedPriorityFilters.clear()
-                selectedDeadlineFilters.clear()
-                selectedCategoryFilters.clear()
+                viewModel.clearAllFilters()
                 dialog.dismiss()
-                applySearchFilter()
             },
         )
 
@@ -883,9 +839,8 @@ class MainActivity : NotaviaActivity() {
 
         content.addView(
             createResetFiltersButton {
-                selectedSortOptions.clear()
+                viewModel.clearSortOptions()
                 dialog.dismiss()
-                applySearchFilter()
             },
         )
 
@@ -924,7 +879,7 @@ class MainActivity : NotaviaActivity() {
             )
 
             val valueTextView = TextView(this@MainActivity).apply {
-                text = selectedSortOptions[group]?.title() ?: getString(R.string.sort_none)
+                text = uiState.selectedSortOptions[group]?.title() ?: getString(R.string.sort_none)
                 textSize = 16f
                 maxLines = 1
                 ellipsize = android.text.TextUtils.TruncateAt.END
@@ -952,7 +907,7 @@ class MainActivity : NotaviaActivity() {
             )
 
             val refreshValue = {
-                valueTextView.text = selectedSortOptions[group]?.title() ?: getString(R.string.sort_none)
+                valueTextView.text = uiState.selectedSortOptions[group]?.title() ?: getString(R.string.sort_none)
             }
             registerSelectionUpdater?.invoke(refreshValue)
 
@@ -986,14 +941,10 @@ class MainActivity : NotaviaActivity() {
             container.addView(
                 createSortPopupRow(
                     title = choice.title,
-                    isSelected = selectedSortOptions[group] == choice.option,
+                    isSelected = uiState.selectedSortOptions[group] == choice.option,
                 ) {
                     popupWindow?.dismiss()
-                    if (choice.option == null) {
-                        selectedSortOptions.remove(group)
-                    } else {
-                        selectedSortOptions[group] = choice.option
-                    }
+                    viewModel.setSortOption(group, choice.option)
                     onSelected()
                 },
             )
@@ -1115,22 +1066,15 @@ class MainActivity : NotaviaActivity() {
 
     // Переключатели мультивыбора для групп фильтров.
     private fun togglePriorityFilter(priority: NotePriority) {
-        if (!selectedPriorityFilters.add(priority)) {
-            selectedPriorityFilters.remove(priority)
-        }
+        viewModel.togglePriorityFilter(priority)
     }
 
     private fun toggleDeadlineFilter(deadlineFilter: DeadlineFilter) {
-        if (!selectedDeadlineFilters.add(deadlineFilter)) {
-            selectedDeadlineFilters.remove(deadlineFilter)
-        }
+        viewModel.toggleDeadlineFilter(deadlineFilter)
     }
 
     private fun toggleCategoryFilter(category: String) {
-        val normalizedCategory = NoteCategories.normalize(category)
-        if (!selectedCategoryFilters.add(normalizedCategory)) {
-            selectedCategoryFilters.remove(normalizedCategory)
-        }
+        viewModel.toggleCategoryFilter(category)
     }
 
     private fun createBottomSheetContainer(): LinearLayout {
@@ -1250,7 +1194,7 @@ class MainActivity : NotaviaActivity() {
         }
         return createSheetOptionRow(
             title = getString(NotePriorityUi.labelRes(priority)),
-            isSelected = { selectedPriorityFilters.contains(priority) },
+            isSelected = { uiState.selectedPriorityFilters.contains(priority) },
             leadingView = priorityDot,
             registerSelectionUpdater = registerSelectionUpdater,
             onClick = onClick,
@@ -1363,212 +1307,92 @@ class MainActivity : NotaviaActivity() {
     }
 
     private fun resetMissingCategoryFilter() {
-        if (selectedCategoryFilters.isEmpty()) return
-        val existingFilters = selectedCategoryFilters.filterTo(linkedSetOf()) { category ->
-            val normalizedCategory = NoteCategories.normalize(category)
-            val isStandardCategory = NoteCategories.isStandard(normalizedCategory)
-            val isCustomCategory = customCategoryNames.contains(normalizedCategory)
-            val hasNotesInCategory = allNotes.any { note ->
-                NoteCategories.contains(note.category, normalizedCategory)
-            }
-
-            isStandardCategory || isCustomCategory || hasNotesInCategory
-        }
-        if (existingFilters.size != selectedCategoryFilters.size) {
-            selectedCategoryFilters.clear()
-            selectedCategoryFilters.addAll(existingFilters)
-        }
+        // Category filters are now normalized inside MainViewModel.
     }
 
     private fun availableCategoryFilters(): List<String> {
-        val sectionNotes = allNotes.filter { note ->
-            NoteType.fromStorage(note.type) == currentSection.noteType
-        }
-        return NoteCategories.availableFrom(sectionNotes, pinnedCategoryNames, customCategoryNames)
-            .filterNot { it != NoteCategories.DEFAULT && hiddenCategoryNames.contains(it) }
+        return viewModel.availableCategoryFilters()
     }
 
     private fun isProtectedCategory(category: String?): Boolean {
-        return category == null || NoteCategories.isReserved(category)
+        return viewModel.isProtectedCategory(category)
     }
 
     // Подписки на DataStore с состоянием закрепленных, скрытых и пользовательских категорий.
     private fun observePinnedCategories() {
-        lifecycleScope.launch {
-            categoryPreferences.pinnedCategoriesFlow.collect { categories ->
-                pinnedCategoryNames.clear()
-                pinnedCategoryNames.addAll(categories)
-                renderUi()
-            }
-        }
+        // Category streams are observed by MainViewModel.
     }
 
     private fun observeHiddenCategories() {
-        lifecycleScope.launch {
-            categoryPreferences.hiddenCategoriesFlow.collect { categories ->
-                hiddenCategoryNames.clear()
-                hiddenCategoryNames.addAll(categories)
-                val changedFilters = selectedCategoryFilters.removeAll(hiddenCategoryNames)
-                if (changedFilters) {
-                    applySearchFilter()
-                } else {
-                    renderUi()
-                }
-            }
-        }
+        // Category streams are observed by MainViewModel.
     }
 
     private fun observeCustomCategories() {
-        lifecycleScope.launch {
-            categoryPreferences.customCategoriesFlow.collect { categories ->
-                customCategoryNames.clear()
-                customCategoryNames.addAll(categories)
-                renderUi()
-            }
-        }
+        // Category streams are observed by MainViewModel.
     }
 
     // Обновление верхней панели в режиме выбора заметок или категорий.
-    private fun updateSelectionTitle() {
-        binding.selectionCountTextView.text = when (selectionMode) {
+    private fun updateSelectionTitle(state: MainUiState) {
+        binding.selectionCountTextView.text = when (state.selectionMode) {
             SelectionMode.NOTES -> getString(
                 R.string.selected_count_format,
-                selectedNoteIds.size,
+                state.selectedNoteIds.size,
             )
             SelectionMode.CATEGORIES -> getString(
                 R.string.selected_categories_count_format,
-                selectedCategoryNames.size,
+                state.selectedCategoryNames.size,
             )
             SelectionMode.NONE -> getString(R.string.selected_count)
         }
     }
 
     private fun updateSelectionControls() {
-        val shouldUnpin = when (selectionMode) {
-            SelectionMode.NOTES -> {
-                val selectedNotes = allNotes.filter { selectedNoteIds.contains(it.id) }
-                selectedNotes.isNotEmpty() && selectedNotes.all { it.isPinned }
-            }
-            SelectionMode.CATEGORIES -> {
-                selectedCategoryNames.isNotEmpty() &&
-                    selectedCategoryNames.all { pinnedCategoryNames.contains(it) }
-            }
-            SelectionMode.NONE -> false
-        }
+        val shouldUnpin = viewModel.shouldUnpinSelection()
         binding.pinSelectedButton.text = getString(
             if (shouldUnpin) R.string.unpin_action else R.string.pin_action,
         )
     }
 
     private fun selectAllVisibleNotes() {
-        if (visibleNotes.isEmpty()) return
-        val visibleIds = visibleNotes.map { it.id }.toSet()
-        val allVisibleSelected = visibleIds.isNotEmpty() && selectedNoteIds.containsAll(visibleIds)
-        selectedNoteIds.clear()
-        if (!allVisibleSelected) {
-            selectedNoteIds.addAll(visibleIds)
-        }
-        renderUi()
+        viewModel.selectAllVisibleNotes()
     }
 
     private fun selectAllCategories() {
-        val categories = availableCategoryFilters()
-            .filterNot { isProtectedCategory(it) }
-        if (categories.isEmpty()) return
-        val allCategoriesSelected = selectedCategoryNames.containsAll(categories)
-        selectedCategoryNames.clear()
-        if (!allCategoriesSelected) {
-            selectedCategoryNames.addAll(categories)
-        }
-        renderUi()
+        viewModel.selectAllCategories()
     }
 
     private fun enterNoteSelectionMode(initialNoteId: Long) {
-        selectionMode = SelectionMode.NOTES
-        selectedNoteIds.clear()
-        selectedCategoryNames.clear()
-        selectedNoteIds.add(initialNoteId)
-        renderUi()
+        viewModel.enterNoteSelectionMode(initialNoteId)
     }
 
     private fun enterCategorySelectionMode(initialCategory: String) {
-        if (isProtectedCategory(initialCategory)) return
-
-        selectionMode = SelectionMode.CATEGORIES
-        selectedNoteIds.clear()
-        selectedCategoryNames.clear()
-        selectedCategoryNames.add(NoteCategories.normalize(initialCategory))
+        viewModel.enterCategorySelectionMode(initialCategory)
         clearSearchFocus()
-        renderUi()
     }
 
     private fun exitSelectionMode() {
-        selectionMode = SelectionMode.NONE
-        selectedNoteIds.clear()
-        selectedCategoryNames.clear()
-        renderUi()
+        viewModel.exitSelectionMode()
     }
 
     private fun toggleSelection(noteId: Long) {
-        if (selectedNoteIds.contains(noteId)) {
-            selectedNoteIds.remove(noteId)
-        } else {
-            selectedNoteIds.add(noteId)
-        }
-        renderUi()
+        viewModel.toggleNoteSelection(noteId)
     }
 
     private fun toggleCategorySelection(category: String) {
-        val normalizedCategory = NoteCategories.normalize(category)
-        if (isProtectedCategory(normalizedCategory)) return
-
-        if (selectedCategoryNames.contains(normalizedCategory)) {
-            selectedCategoryNames.remove(normalizedCategory)
-        } else {
-            selectedCategoryNames.add(normalizedCategory)
-        }
-        if (selectedCategoryNames.isEmpty()) {
-            exitSelectionMode()
-        } else {
-            renderUi()
-        }
+        viewModel.toggleCategorySelection(category)
     }
 
     private fun pinOrUnpinSelectedNotes() {
-        if (selectedNoteIds.isEmpty()) return
-
-        val selectedNotes = allNotes.filter { selectedNoteIds.contains(it.id) }
-        val shouldPin = selectedNotes.any { !it.isPinned }
-
-        lifecycleScope.launch {
-            repository.updatePinnedState(selectedNoteIds.toList(), shouldPin)
-            exitSelectionMode()
-            loadNotes()
-        }
+        viewModel.pinOrUnpinSelectedNotes()
     }
 
     private fun pinOrUnpinSelectedCategories() {
-        val categoriesToPin = selectedCategoryNames
-            .filterNot { isProtectedCategory(it) }
-            .toSet()
-        if (categoriesToPin.isEmpty()) return
-
-        val shouldPin = categoriesToPin.any { !pinnedCategoryNames.contains(it) }
-        if (shouldPin) {
-            pinnedCategoryNames.addAll(categoriesToPin)
-        } else {
-            pinnedCategoryNames.removeAll(categoriesToPin)
-        }
-
-        lifecycleScope.launch {
-            categoryPreferences.setPinnedCategories(pinnedCategoryNames)
-            exitSelectionMode()
-        }
+        viewModel.pinOrUnpinSelectedCategories()
     }
 
     // Подтверждение удаления через BottomSheet перед изменением базы.
     private fun showDeleteNotesConfirmation() {
-        val count = selectedNoteIds.size
+        val count = uiState.selectedNoteIds.size
         if (count == 0) return
 
         val dialog = BottomSheetDialog(this)
@@ -1681,44 +1505,12 @@ class MainActivity : NotaviaActivity() {
     }
 
     private fun deleteSelectedNotes() {
-        if (selectedNoteIds.isEmpty()) return
-
-        lifecycleScope.launch {
-            repository.deleteNotes(selectedNoteIds.toList())
-            exitSelectionMode()
-            loadNotes()
-        }
+        viewModel.deleteSelectedNotes()
     }
 
     // Удаление категорий из заметок и обновление сохраненного состояния категорий.
     private fun deleteSelectedCategories() {
-        val categoriesToDelete = selectedCategoryNames
-            .filterNot { isProtectedCategory(it) }
-            .toSet()
-        if (categoriesToDelete.isEmpty()) return
-
-        lifecycleScope.launch {
-            allNotes.forEach { note ->
-                val updatedCategories = NoteCategories.parse(note.category)
-                    .filterNot { categoriesToDelete.contains(it) }
-                repository.saveNote(
-                    note.copy(
-                        category = NoteCategories.serialize(updatedCategories),
-                        updatedAt = System.currentTimeMillis(),
-                    ),
-                )
-            }
-
-            pinnedCategoryNames.removeAll(categoriesToDelete)
-            customCategoryNames.removeAll(categoriesToDelete)
-            hiddenCategoryNames.addAll(categoriesToDelete)
-            categoryPreferences.setPinnedCategories(pinnedCategoryNames)
-            categoryPreferences.setCustomCategories(customCategoryNames)
-            categoryPreferences.setHiddenCategories(hiddenCategoryNames)
-            selectedCategoryFilters.removeAll(categoriesToDelete)
-            exitSelectionMode()
-            loadNotes()
-        }
+        viewModel.deleteSelectedCategories()
     }
 
     private fun openViewer(noteId: Long) {
@@ -1731,18 +1523,13 @@ class MainActivity : NotaviaActivity() {
     private fun openEditor(noteId: Long? = null) {
         val intent = Intent(this, EditNoteActivity::class.java).apply {
             noteId?.let { putExtra(EditNoteActivity.EXTRA_NOTE_ID, it) }
-            putExtra(EditNoteActivity.EXTRA_NOTE_TYPE, currentSection.noteType.storageValue)
+            putExtra(EditNoteActivity.EXTRA_NOTE_TYPE, uiState.currentSection.noteType.storageValue)
         }
         startActivity(intent)
     }
 
     private fun clearChecklistOnlyControls() {
-        searchQuery = ""
         binding.searchEditText.text?.clear()
-        selectedCategoryFilters.clear()
-        selectedPriorityFilters.clear()
-        selectedDeadlineFilters.clear()
-        selectedSortOptions.clear()
         clearSearchFocus()
     }
 
@@ -1809,37 +1596,6 @@ class MainActivity : NotaviaActivity() {
     }
 
     // Внутренние типы состояния главного экрана.
-    private enum class MainSection(val noteType: NoteType) {
-        NOTES(NoteType.NOTE),
-        CHECKLISTS(NoteType.CHECKLIST),
-    }
-
-    private enum class SelectionMode {
-        NONE,
-        NOTES,
-        CATEGORIES,
-    }
-
-    private enum class DeadlineFilter {
-        WITH_DEADLINE,
-        WITHOUT_DEADLINE,
-    }
-
-    private enum class SortGroup {
-        CREATED,
-        PRIORITY,
-        DEADLINE,
-    }
-
-    private enum class NoteSortOption(val group: SortGroup) {
-        CREATED_NEWEST(SortGroup.CREATED),
-        CREATED_OLDEST(SortGroup.CREATED),
-        PRIORITY_HIGH_FIRST(SortGroup.PRIORITY),
-        PRIORITY_LOW_FIRST(SortGroup.PRIORITY),
-        DEADLINE_NEAREST(SortGroup.DEADLINE),
-        DEADLINE_FARTHEST(SortGroup.DEADLINE),
-    }
-
     private data class SortChoice(
         val option: NoteSortOption?,
         val title: String,

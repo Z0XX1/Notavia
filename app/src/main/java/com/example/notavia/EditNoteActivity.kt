@@ -32,24 +32,27 @@ import androidx.core.content.getSystemService
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.widget.doAfterTextChanged
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.example.notavia.checklist.ChecklistState
-import com.example.notavia.data.ChecklistContent
 import com.example.notavia.data.ChecklistItem
-import com.example.notavia.data.Note
 import com.example.notavia.data.NoteCategories
 import com.example.notavia.data.NotePriority
 import com.example.notavia.data.NoteRepository
 import com.example.notavia.data.NoteType
 import com.example.notavia.data.NotaviaDatabase
 import com.example.notavia.databinding.ActivityEditNoteBinding
+import com.example.notavia.editor.EditNoteEffect
+import com.example.notavia.editor.EditNoteUiState
+import com.example.notavia.editor.EditNoteViewModel
+import com.example.notavia.editor.NoteDraft
 import com.example.notavia.settings.CategoryPreferences
 import com.example.notavia.ui.NoteCategoryUi
 import com.example.notavia.ui.NotePriorityUi
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.DateFormatSymbols
 import java.text.SimpleDateFormat
@@ -61,12 +64,12 @@ import java.util.Locale
 class EditNoteActivity : NotaviaActivity() {
     // Основные зависимости редактора: ViewBinding, Repository и настройки категорий.
     private lateinit var binding: ActivityEditNoteBinding
+    private lateinit var viewModel: EditNoteViewModel
     private lateinit var repository: NoteRepository
     private lateinit var categoryPreferences: CategoryPreferences
 
     // Состояние редактируемой записи, выбранных категорий, приоритета, дедлайна и автосохранения.
     private var noteId: Long = NO_NOTE_ID
-    private var existingNote: Note? = null
     private var selectedNoteType: NoteType = NoteType.NOTE
     private val checklistItems = ChecklistState()
     private val selectedCategories = linkedSetOf(NoteCategories.DEFAULT)
@@ -78,10 +81,7 @@ class EditNoteActivity : NotaviaActivity() {
     private var isDeadlinePickerExpanded: Boolean = false
     private var isUpdatingDeadlinePickers: Boolean = false
     private var isApplyingLoadedNote: Boolean = false
-    private var autoSaveDelayJob: Job? = null
-    private var autoSaveJob: Job? = null
-    private var pendingSaveAfterCurrent: Boolean = false
-    private var lastSavedDraft: NoteDraft? = null
+    private var renderedLoadedNoteId: Long? = null
     private val deadlineDateFormatter: SimpleDateFormat by lazy {
         SimpleDateFormat(DEADLINE_DATE_PATTERN, currentLocale())
     }
@@ -123,10 +123,15 @@ class EditNoteActivity : NotaviaActivity() {
         }
 
         repository = NoteRepository(NotaviaDatabase.getDatabase(this).noteDao())
+        viewModel = ViewModelProvider(
+            this,
+            EditNoteViewModel.Factory(repository),
+        )[EditNoteViewModel::class.java]
         categoryPreferences = CategoryPreferences(this)
         noteId = intent.getLongExtra(EXTRA_NOTE_ID, NO_NOTE_ID)
         selectedNoteType = NoteType.fromStorage(intent.getStringExtra(EXTRA_NOTE_TYPE))
 
+        observeEditorState()
         setupActions()
         setupCategoryPicker()
         setupDeadlinePicker()
@@ -134,7 +139,7 @@ class EditNoteActivity : NotaviaActivity() {
         updateEditorMode()
 
         if (noteId != NO_NOTE_ID) {
-            loadNote()
+            viewModel.start(noteId, selectedNoteType)
         } else {
             binding.screenTitleTextView.text = getString(
                 if (selectedNoteType == NoteType.CHECKLIST) {
@@ -144,6 +149,7 @@ class EditNoteActivity : NotaviaActivity() {
                 },
             )
             focusTitleField()
+            viewModel.start(null, selectedNoteType)
         }
 
         setupBackHandling()
@@ -882,46 +888,61 @@ class EditNoteActivity : NotaviaActivity() {
     }
 
     // Загрузка существующей заметки по ID и заполнение полей редактора.
-    private fun loadNote() {
+    private fun observeEditorState() {
         lifecycleScope.launch {
-            val note = repository.getNoteById(noteId) ?: run {
-                finish()
-                return@launch
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                launch {
+                    viewModel.uiState.collect { state ->
+                        renderEditorState(state)
+                    }
+                }
+                launch {
+                    viewModel.effects.collect { effect ->
+                        when (effect) {
+                            EditNoteEffect.Finish -> finish()
+                        }
+                    }
+                }
             }
+        }
+    }
 
-            existingNote = note
-            isApplyingLoadedNote = true
-            try {
-                binding.screenTitleTextView.text = getString(R.string.edit_note_title)
-                selectedNoteType = NoteType.fromStorage(note.type)
-                updateEditorMode()
-                binding.titleEditText.setText(note.title)
-                if (selectedNoteType == NoteType.CHECKLIST) {
-                    checklistItems.replaceWithContent(note.content)
-                    updateChecklistInputHint()
-                    renderChecklistItems()
-                } else {
-                    binding.contentEditText.setText(note.content)
-                }
-                if (selectedNoteType == NoteType.CHECKLIST) {
-                    selectedPriority = NotePriority.NONE
-                    selectedDeadlineAt = null
-                    selectedCategories.clear()
-                    selectedCategories.add(NoteCategories.DEFAULT)
-                } else {
-                    selectedPriority = NotePriority.fromStorage(note.priority)
-                    updatePriorityUi()
-                    selectedDeadlineAt = note.deadlineAt
-                    configureDeadlinePickers(selectedDeadlineAt ?: todayStartMillis())
-                    updateDeadlineUi()
-                    selectedCategories.clear()
-                    selectedCategories.addAll(NoteCategories.parse(note.category))
-                    updateCategoryUi()
-                }
-                lastSavedDraft = currentDraft()
-            } finally {
-                isApplyingLoadedNote = false
+    private fun renderEditorState(state: EditNoteUiState) {
+        noteId = state.noteId ?: NO_NOTE_ID
+        val note = state.loadedNote ?: return
+        if (renderedLoadedNoteId == note.id) return
+
+        renderedLoadedNoteId = note.id
+        isApplyingLoadedNote = true
+        try {
+            binding.screenTitleTextView.text = getString(R.string.edit_note_title)
+            selectedNoteType = NoteType.fromStorage(note.type)
+            updateEditorMode()
+            binding.titleEditText.setText(note.title)
+            if (selectedNoteType == NoteType.CHECKLIST) {
+                checklistItems.replaceWithContent(note.content)
+                updateChecklistInputHint()
+                renderChecklistItems()
+            } else {
+                binding.contentEditText.setText(note.content)
             }
+            if (selectedNoteType == NoteType.CHECKLIST) {
+                selectedPriority = NotePriority.NONE
+                selectedDeadlineAt = null
+                selectedCategories.clear()
+                selectedCategories.add(NoteCategories.DEFAULT)
+            } else {
+                selectedPriority = NotePriority.fromStorage(note.priority)
+                updatePriorityUi()
+                selectedDeadlineAt = note.deadlineAt
+                configureDeadlinePickers(selectedDeadlineAt ?: todayStartMillis())
+                updateDeadlineUi()
+                selectedCategories.clear()
+                selectedCategories.addAll(NoteCategories.parse(note.category))
+                updateCategoryUi()
+            }
+        } finally {
+            isApplyingLoadedNote = false
         }
     }
 
@@ -929,79 +950,24 @@ class EditNoteActivity : NotaviaActivity() {
     private fun scheduleAutoSave() {
         if (isApplyingLoadedNote) return
 
-        autoSaveDelayJob?.cancel()
-        autoSaveDelayJob = lifecycleScope.launch {
-            delay(AUTO_SAVE_DELAY_MS)
-            requestAutoSaveNow()
-        }
+        viewModel.scheduleAutoSave(currentDraft())
     }
 
     // Защита от параллельных сохранений и повторная запись при новых изменениях.
     private fun requestAutoSaveNow() {
         if (isApplyingLoadedNote) return
 
-        if (autoSaveJob?.isActive == true) {
-            pendingSaveAfterCurrent = true
-            return
-        }
-
-        autoSaveJob = lifecycleScope.launch {
-            do {
-                pendingSaveAfterCurrent = false
-                persistCurrentNote()
-            } while (pendingSaveAfterCurrent)
-        }
+        viewModel.requestAutoSaveNow(currentDraft())
     }
 
     private fun flushAutoSaveThen(onComplete: () -> Unit = {}) {
-        autoSaveDelayJob?.cancel()
-        if (autoSaveJob?.isActive == true) {
-            pendingSaveAfterCurrent = true
-            lifecycleScope.launch {
-                autoSaveJob?.join()
-                onComplete()
-            }
-            return
-        }
-
-        autoSaveJob = lifecycleScope.launch {
-            persistCurrentNote()
+        lifecycleScope.launch {
+            viewModel.flushAutoSave(currentDraft())
             onComplete()
         }
     }
 
     // Запись текущего черновика в Room через Repository.
-    private suspend fun persistCurrentNote() {
-        val draft = currentDraft()
-        if (draft == lastSavedDraft) return
-        if (existingNote == null && draft.isBlank()) return
-
-        val now = System.currentTimeMillis()
-        val noteToSave = existingNote?.copy(
-            title = draft.title,
-            content = draft.content,
-            category = draft.category,
-            priority = draft.priority,
-            deadlineAt = draft.deadlineAt,
-            type = draft.type,
-            updatedAt = now,
-        ) ?: Note(
-            title = draft.title,
-            content = draft.content,
-            category = draft.category,
-            priority = draft.priority,
-            deadlineAt = draft.deadlineAt,
-            type = draft.type,
-            createdAt = now,
-            updatedAt = now,
-        )
-
-        val savedId = repository.saveNote(noteToSave)
-        existingNote = noteToSave.copy(id = savedId)
-        noteId = savedId
-        lastSavedDraft = draft
-    }
-
     // Сбор текущих значений экрана в объект для сравнения и сохранения.
     private fun currentDraft(): NoteDraft {
         return NoteDraft(
@@ -1181,7 +1147,6 @@ class EditNoteActivity : NotaviaActivity() {
         const val EXTRA_NOTE_ID = "extra_note_id"
         const val EXTRA_NOTE_TYPE = "extra_note_type"
         private const val NO_NOTE_ID = -1L
-        private const val AUTO_SAVE_DELAY_MS = 450L
         private const val PRIORITY_BUTTON_PRESSED_ALPHA = 0.68f
         private const val BUTTON_PRESSED_ALPHA = 0.68f
         private const val DEADLINE_ARROW_ANIMATION_MS = 180L
@@ -1191,21 +1156,4 @@ class EditNoteActivity : NotaviaActivity() {
     }
 
     // Черновик используется для сравнения текущего состояния с последним сохранением.
-    private data class NoteDraft(
-        val title: String,
-        val content: String,
-        val category: String,
-        val priority: String,
-        val deadlineAt: Long?,
-        val type: String,
-    ) {
-        fun isBlank(): Boolean {
-            return title.isBlank() &&
-                if (NoteType.fromStorage(type) == NoteType.CHECKLIST) {
-                    ChecklistContent.parse(content).isEmpty()
-                } else {
-                    content.isBlank()
-                }
-        }
-    }
 }

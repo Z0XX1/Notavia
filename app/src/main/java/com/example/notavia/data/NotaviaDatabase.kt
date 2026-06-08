@@ -49,6 +49,53 @@ abstract class NotaviaDatabase : RoomDatabase() {
 
         private val MIGRATION_5_6 = object : Migration(5, 6) {
             override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("DROP TABLE IF EXISTS notes_new")
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS notes_new (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        title TEXT NOT NULL,
+                        content TEXT NOT NULL,
+                        category TEXT NOT NULL DEFAULT '${NoteCategories.DEFAULT}',
+                        priority TEXT NOT NULL DEFAULT '${NotePriority.NONE.storageValue}',
+                        deadlineAt INTEGER DEFAULT NULL,
+                        type TEXT NOT NULL DEFAULT '${NoteType.NOTE.storageValue}',
+                        createdAt INTEGER NOT NULL,
+                        updatedAt INTEGER NOT NULL,
+                        isPinned INTEGER NOT NULL
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    INSERT INTO notes_new (
+                        id,
+                        title,
+                        content,
+                        category,
+                        priority,
+                        deadlineAt,
+                        type,
+                        createdAt,
+                        updatedAt,
+                        isPinned
+                    )
+                    SELECT
+                        id,
+                        title,
+                        content,
+                        category,
+                        priority,
+                        deadlineAt,
+                        type,
+                        createdAt,
+                        updatedAt,
+                        isPinned
+                    FROM notes
+                    """.trimIndent(),
+                )
+                db.execSQL("DROP TABLE notes")
+                db.execSQL("ALTER TABLE notes_new RENAME TO notes")
                 replaceCategory(db, "\u0411\u0435\u0437 \u043a\u0430\u0442\u0435\u0433\u043e\u0440\u0438\u0438", NoteCategories.DEFAULT)
                 replaceCategory(db, "\u0412\u0441\u0435", NoteCategories.ALL)
                 replaceCategory(db, "\u041b\u0438\u0447\u043d\u043e\u0435", NoteCategories.PERSONAL)
@@ -65,6 +112,14 @@ abstract class NotaviaDatabase : RoomDatabase() {
             }
         }
 
+        val ALL_MIGRATIONS: Array<Migration>
+            get() = arrayOf(
+                MIGRATION_1_2,
+                MIGRATION_2_3,
+                MIGRATION_3_4,
+                MIGRATION_4_5,
+                MIGRATION_5_6,
+            )
 
         fun getDatabase(context: Context): NotaviaDatabase {
             return INSTANCE ?: synchronized(this) {
@@ -73,13 +128,7 @@ abstract class NotaviaDatabase : RoomDatabase() {
                     NotaviaDatabase::class.java,
                     "notavia_database",
                 )
-                    .addMigrations(
-                        MIGRATION_1_2,
-                        MIGRATION_2_3,
-                        MIGRATION_3_4,
-                        MIGRATION_4_5,
-                        MIGRATION_5_6,
-                    )
+                    .addMigrations(*ALL_MIGRATIONS)
                     .build()
                 INSTANCE = instance
                 instance

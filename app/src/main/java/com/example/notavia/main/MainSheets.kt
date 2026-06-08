@@ -613,6 +613,8 @@ class MainSheets(
     private fun DeadlineFilter.title(): String {
         return when (this) {
             DeadlineFilter.WITH_DEADLINE -> activity.getString(R.string.filter_deadline_with)
+            DeadlineFilter.OVERDUE -> activity.getString(R.string.filter_deadline_overdue)
+            DeadlineFilter.ACTIVE -> activity.getString(R.string.filter_deadline_active)
             DeadlineFilter.WITHOUT_DEADLINE -> activity.getString(R.string.filter_deadline_without)
         }
     }

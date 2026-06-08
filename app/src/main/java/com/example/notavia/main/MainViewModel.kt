@@ -28,6 +28,8 @@ enum class SelectionMode {
 
 enum class DeadlineFilter {
     WITH_DEADLINE,
+    OVERDUE,
+    ACTIVE,
     WITHOUT_DEADLINE,
 }
 
@@ -484,8 +486,11 @@ class MainViewModel(
                 NotePriority.fromStorage(note.priority) in stateWithFilters.selectedPriorityFilters
             val matchesDeadline = stateWithFilters.selectedDeadlineFilters.isEmpty() ||
                 stateWithFilters.selectedDeadlineFilters.any { deadlineFilter ->
+                    val now = System.currentTimeMillis()
                     when (deadlineFilter) {
                         DeadlineFilter.WITH_DEADLINE -> note.deadlineAt != null
+                        DeadlineFilter.OVERDUE -> note.deadlineAt?.let { it < now } == true
+                        DeadlineFilter.ACTIVE -> note.deadlineAt?.let { it >= now } == true
                         DeadlineFilter.WITHOUT_DEADLINE -> note.deadlineAt == null
                     }
                 }

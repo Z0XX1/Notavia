@@ -58,6 +58,8 @@
     <string name="filter_category_title">Категория</string>
     <string name="filter_any">Любой</string>
     <string name="filter_deadline_with">Есть дедлайн</string>
+    <string name="filter_deadline_overdue">Просроченный</string>
+    <string name="filter_deadline_active">Актуальный</string>
     <string name="filter_deadline_without">Без дедлайна</string>
     <string name="filter_reset_action">Сбросить</string>
     <string name="sort_by_created">Дата создания</string>

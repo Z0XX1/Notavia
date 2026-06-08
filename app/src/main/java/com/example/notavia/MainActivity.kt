@@ -28,10 +28,8 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
-import com.example.notavia.data.NoteRepository
-import com.example.notavia.data.NotaviaDatabase
 import com.example.notavia.databinding.ActivityMainBinding
-import com.example.notavia.settings.CategoryPreferences
+import com.example.notavia.di.notaviaContainer
 import com.example.notavia.main.MainCategoryFilterBar
 import com.example.notavia.main.MainSection
 import com.example.notavia.main.MainSheets
@@ -138,11 +136,12 @@ class MainActivity : NotaviaActivity() {
             insets
         }
 
+        val appContainer = notaviaContainer()
         viewModel = ViewModelProvider(
             this,
             MainViewModel.Factory(
-                NoteRepository(NotaviaDatabase.getDatabase(this).noteDao()),
-                CategoryPreferences(this),
+                appContainer.notesRepository,
+                appContainer.categorySettings,
             ),
         )[MainViewModel::class.java]
         mainSheets = MainSheets(this, viewModel) { uiState }

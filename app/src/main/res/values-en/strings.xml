@@ -58,6 +58,8 @@
     <string name="filter_category_title">Category</string>
     <string name="filter_any">Any</string>
     <string name="filter_deadline_with">Has deadline</string>
+    <string name="filter_deadline_overdue">Overdue</string>
+    <string name="filter_deadline_active">Active</string>
     <string name="filter_deadline_without">No deadline</string>
     <string name="filter_reset_action">Reset</string>
     <string name="sort_by_created">Created date</string>

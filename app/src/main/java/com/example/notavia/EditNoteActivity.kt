@@ -19,7 +19,6 @@ import android.widget.PopupWindow
 import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
-import androidx.appcompat.widget.AppCompatImageButton
 import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
 import androidx.core.view.ViewCompat
@@ -32,28 +31,24 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.example.notavia.checklist.ChecklistState
 import com.example.notavia.data.NoteCategories
 import com.example.notavia.data.NotePriority
-import com.example.notavia.data.NoteRepository
+import com.example.notavia.data.NotesRepository
 import com.example.notavia.data.NoteType
-import com.example.notavia.data.NotaviaDatabase
 import com.example.notavia.databinding.ActivityEditNoteBinding
+import com.example.notavia.di.notaviaContainer
 import com.example.notavia.editor.ChecklistEditorRenderer
 import com.example.notavia.editor.DeadlinePickerController
 import com.example.notavia.editor.EditNoteEffect
 import com.example.notavia.editor.EditNoteUiState
 import com.example.notavia.editor.EditNoteViewModel
-import com.example.notavia.editor.EditorCategoryState
+import com.example.notavia.editor.EditorCategoryController
 import com.example.notavia.editor.NoteDraft
 import com.example.notavia.navigation.NoteNavigationContract.EXTRA_NOTE_ID
 import com.example.notavia.navigation.NoteNavigationContract.EXTRA_NOTE_TYPE
 import com.example.notavia.navigation.NoteNavigationContract.NO_NOTE_ID
-import com.example.notavia.settings.CategoryPreferences
-import com.example.notavia.ui.CategoryInputDialog
-import com.example.notavia.ui.NoteCategoryUi
 import com.example.notavia.ui.NotePriorityUi
 import com.example.notavia.ui.dp
 import com.example.notavia.ui.installAlphaPressFeedback
 import com.example.notavia.ui.resolveThemeColor
-import com.google.android.material.button.MaterialButton
 import kotlinx.coroutines.launch
 
 
@@ -61,17 +56,15 @@ class EditNoteActivity : NotaviaActivity() {
 
     private lateinit var binding: ActivityEditNoteBinding
     private lateinit var viewModel: EditNoteViewModel
-    private lateinit var repository: NoteRepository
-    private lateinit var categoryPreferences: CategoryPreferences
+    private lateinit var repository: NotesRepository
     private lateinit var checklistRenderer: ChecklistEditorRenderer
     private lateinit var deadlineController: DeadlinePickerController
+    private lateinit var categoryController: EditorCategoryController
 
 
     private var noteId: Long = NO_NOTE_ID
     private var selectedNoteType: NoteType = NoteType.NOTE
     private val checklistItems = ChecklistState()
-    private val categoryState = EditorCategoryState()
-    private val categoryButtons = mutableMapOf<String, MaterialButton>()
     private var selectedPriority: NotePriority = NotePriority.NONE
     private var isApplyingLoadedNote: Boolean = false
     private var renderedLoadedNoteId: Long? = null
@@ -117,12 +110,19 @@ class EditNoteActivity : NotaviaActivity() {
             insets
         }
 
-        repository = NoteRepository(NotaviaDatabase.getDatabase(this).noteDao())
+        val appContainer = notaviaContainer()
+        repository = appContainer.notesRepository
         viewModel = ViewModelProvider(
             this,
             EditNoteViewModel.Factory(repository),
         )[EditNoteViewModel::class.java]
-        categoryPreferences = CategoryPreferences(this)
+        categoryController = EditorCategoryController(
+            activity = this,
+            binding = binding,
+            categorySettings = appContainer.categorySettings,
+            notesRepository = repository,
+            onSelectionChanged = ::scheduleAutoSave,
+        )
         noteId = intent.getLongExtra(EXTRA_NOTE_ID, NO_NOTE_ID)
         selectedNoteType = NoteType.fromStorage(intent.getStringExtra(EXTRA_NOTE_TYPE))
 
@@ -216,7 +216,7 @@ class EditNoteActivity : NotaviaActivity() {
         binding.deadlineHeader.visibility = if (isChecklist) View.GONE else View.VISIBLE
         deadlineController.hidePicker()
         if (isChecklist) {
-            categoryState.resetSelectionToDefault()
+            categoryController.resetSelectionToDefault()
             selectedPriority = NotePriority.NONE
             deadlineController.clear()
         }
@@ -254,12 +254,7 @@ class EditNoteActivity : NotaviaActivity() {
 
 
     private fun setupCategoryPicker() {
-        renderCategoryButtons()
-
-        observeHiddenCategories()
-        observeCustomCategories()
-        loadCustomCategoryOptions()
-        updateCategoryUi()
+        categoryController.setup(lifecycleScope)
     }
 
 
@@ -370,132 +365,6 @@ class EditNoteActivity : NotaviaActivity() {
     }
 
 
-    private fun showAddCategoryDialog() {
-        CategoryInputDialog(this) { rawCategory ->
-            addCustomCategory(rawCategory)
-        }.show()
-    }
-
-    private fun observeHiddenCategories() {
-        lifecycleScope.launch {
-            categoryPreferences.hiddenCategoriesFlow.collect { categories ->
-                categoryState.setHiddenCategories(categories)
-                renderCategoryButtons()
-            }
-        }
-    }
-
-    private fun observeCustomCategories() {
-        lifecycleScope.launch {
-            categoryPreferences.customCategoriesFlow.collect { categories ->
-                categoryState.mergeCustomCategories(categories)
-                renderCategoryButtons()
-            }
-        }
-    }
-
-    private fun loadCustomCategoryOptions() {
-        lifecycleScope.launch {
-            categoryState.mergeCustomCategories(
-                repository.getAllNotesSnapshot()
-                    .flatMap { NoteCategories.parse(it.category) }
-                    .filterNot { NoteCategories.isStandard(it) || it == NoteCategories.ALL },
-            )
-            renderCategoryButtons()
-        }
-    }
-
-    private fun renderCategoryButtons() {
-        categoryButtons.clear()
-        binding.categoryButtonsContainer.removeAllViews()
-        addCategoryAddButton()
-
-        categoryState.visibleCategories().forEach { category ->
-            addCategoryButton(category)
-        }
-        updateCategoryButtons()
-    }
-
-    private fun addCategoryAddButton() {
-        val button = AppCompatImageButton(this).apply {
-            setImageResource(R.drawable.addplusfilter)
-            setBackgroundColor(Color.TRANSPARENT)
-            contentDescription = getString(R.string.custom_category_hint)
-            scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setPadding(dp(7), dp(7), dp(7), dp(7))
-            setColorFilter(ContextCompat.getColor(this@EditNoteActivity, R.color.note_stroke_color))
-            installAlphaPressFeedback(this)
-            setOnClickListener {
-                showAddCategoryDialog()
-            }
-        }
-        val params = LinearLayout.LayoutParams(
-            dp(32),
-            dp(32),
-        ).apply {
-            marginEnd = dp(8)
-        }
-        binding.categoryButtonsContainer.addView(button, params)
-    }
-
-    private fun addCategoryButton(category: String) {
-        val button = MaterialButton(this).apply {
-            text = NoteCategoryUi.displayName(this@EditNoteActivity, category)
-            setAllCaps(false)
-            minWidth = 0
-            minHeight = 0
-            insetTop = 0
-            insetBottom = 0
-            cornerRadius = dp(15)
-            textSize = 13f
-            rippleColor = ColorStateList.valueOf(Color.TRANSPARENT)
-            setPadding(dp(14), 0, dp(14), 0)
-            setOnClickListener {
-                toggleCategory(category)
-                updateCategoryUi()
-                scheduleAutoSave()
-            }
-        }
-        val params = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.WRAP_CONTENT,
-            dp(36),
-        ).apply {
-            marginEnd = dp(8)
-        }
-        binding.categoryButtonsContainer.addView(button, params)
-        categoryButtons[category] = button
-    }
-
-    private fun addCustomCategory(rawCategory: String) {
-        if (rawCategory.isBlank()) return
-
-        val category = NoteCategories.normalize(rawCategory)
-        if (category == NoteCategories.ALL) return
-
-        categoryState.addCustomCategory(category)
-        restoreHiddenCategory(category)
-        categoryState.select(category)
-        lifecycleScope.launch {
-            categoryPreferences.setCustomCategories(categoryState.custom)
-        }
-        renderCategoryButtons()
-        updateCategoryUi()
-        scheduleAutoSave()
-    }
-
-    private fun restoreHiddenCategory(category: String) {
-        if (!categoryState.restoreHiddenCategory(category)) return
-
-        lifecycleScope.launch {
-            categoryPreferences.setHiddenCategories(categoryState.hidden)
-        }
-    }
-
-    private fun toggleCategory(category: String) {
-        categoryState.toggle(category)
-    }
-
-
     private fun observeEditorState() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -537,13 +406,12 @@ class EditNoteActivity : NotaviaActivity() {
             if (selectedNoteType == NoteType.CHECKLIST) {
                 selectedPriority = NotePriority.NONE
                 deadlineController.clear()
-                categoryState.resetSelectionToDefault()
+                categoryController.resetSelectionToDefault()
             } else {
                 selectedPriority = NotePriority.fromStorage(note.priority)
                 updatePriorityUi()
                 deadlineController.setDeadline(note.deadlineAt)
-                categoryState.selectStoredCategories(note.category)
-                updateCategoryUi()
+                categoryController.selectStoredCategories(note.category)
             }
         } finally {
             isApplyingLoadedNote = false
@@ -584,7 +452,7 @@ class EditNoteActivity : NotaviaActivity() {
             category = if (selectedNoteType == NoteType.CHECKLIST) {
                 NoteCategories.DEFAULT
             } else {
-                categoryState.serializeSelected()
+                categoryController.serializeSelected()
             },
             priority = if (selectedNoteType == NoteType.CHECKLIST) {
                 NotePriority.NONE.storageValue
@@ -674,47 +542,6 @@ class EditNoteActivity : NotaviaActivity() {
                 }
             }
         }
-    }
-
-
-    private fun updateCategoryUi() {
-        val addedCustomCategories = categoryState.includeSelectedCustomCategories()
-        val missingSelectedButtons = categoryState.customSelectedCategories()
-            .any { category -> !categoryButtons.containsKey(category) }
-        if (addedCustomCategories || missingSelectedButtons) {
-            renderCategoryButtons()
-            return
-        }
-
-        updateCategoryButtons()
-    }
-
-    private fun updateCategoryButtons() {
-        categoryButtons.forEach { (category, button) ->
-            styleCategoryButton(
-                button,
-                isActive = categoryState.isSelected(category),
-            )
-        }
-    }
-
-    private fun styleCategoryButton(button: MaterialButton, isActive: Boolean) {
-        button.backgroundTintList = ColorStateList.valueOf(
-            ContextCompat.getColor(
-                this,
-                if (isActive) R.color.selection_stroke_color else android.R.color.transparent,
-            ),
-        )
-        button.setTextColor(
-            ContextCompat.getColor(
-                this,
-                if (isActive) R.color.light_on_primary else R.color.note_stroke_color,
-            ),
-        )
-        button.strokeWidth = if (isActive) 0 else dp(1)
-        button.strokeColor = ColorStateList.valueOf(
-            ContextCompat.getColor(this, R.color.note_stroke_color),
-        )
     }
 
     companion object {

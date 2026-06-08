@@ -5,10 +5,9 @@ import android.content.res.Configuration
 import android.os.LocaleList
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
-import com.example.notavia.settings.AppearancePreferences
+import com.example.notavia.di.NotaviaDependencies
 import com.example.notavia.settings.AppFontSize
 import com.example.notavia.settings.AppLanguage
-import com.example.notavia.settings.LanguagePreferences
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -21,9 +20,10 @@ abstract class NotaviaActivity : AppCompatActivity() {
 
 
     override fun attachBaseContext(newBase: Context) {
+        val appContainer = NotaviaDependencies.from(newBase)
         val (fontSize, language) = runBlocking {
-            AppearancePreferences(newBase).fontSizeFlow.first() to
-                LanguagePreferences(newBase).languageFlow.first()
+            appContainer.appearanceSettings.fontSizeFlow.first() to
+                appContainer.languageSettings.languageFlow.first()
         }
         appliedFontSize = fontSize
         appliedLanguage = language
@@ -33,8 +33,9 @@ abstract class NotaviaActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         lifecycleScope.launch {
-            val latestFontSize = AppearancePreferences(this@NotaviaActivity).fontSizeFlow.first()
-            val latestLanguage = LanguagePreferences(this@NotaviaActivity).languageFlow.first()
+            val appContainer = NotaviaDependencies.from(this@NotaviaActivity)
+            val latestFontSize = appContainer.appearanceSettings.fontSizeFlow.first()
+            val latestLanguage = appContainer.languageSettings.languageFlow.first()
             if (latestFontSize != appliedFontSize || latestLanguage != appliedLanguage) {
                 recreate()
             }

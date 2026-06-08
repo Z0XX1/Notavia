@@ -3,8 +3,7 @@ package com.example.notavia
 import android.app.Application
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.LocaleListCompat
-import com.example.notavia.settings.LanguagePreferences
-import com.example.notavia.settings.ThemePreferences
+import com.example.notavia.di.NotaviaDependencies
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 
@@ -12,9 +11,10 @@ import kotlinx.coroutines.runBlocking
 class NotaviaApp : Application() {
     override fun onCreate() {
         super.onCreate()
+        val appContainer = NotaviaDependencies.initialize(this)
         val (theme, language) = runBlocking {
-            ThemePreferences(this@NotaviaApp).themeFlow.first() to
-                LanguagePreferences(this@NotaviaApp).languageFlow.first()
+            appContainer.themeSettings.themeFlow.first() to
+                appContainer.languageSettings.languageFlow.first()
         }
         AppCompatDelegate.setApplicationLocales(
             LocaleListCompat.forLanguageTags(language.localeTag),

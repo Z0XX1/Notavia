@@ -12,17 +12,15 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.example.notavia.databinding.ActivitySettingsBinding
+import com.example.notavia.di.notaviaContainer
 import com.example.notavia.settings.AppFontSize
 import com.example.notavia.settings.AppLanguage
 import com.example.notavia.settings.AppTheme
-import com.example.notavia.settings.AppearancePreferences
-import com.example.notavia.settings.LanguagePreferences
 import com.example.notavia.settings.SettingsEffect
 import com.example.notavia.settings.SettingsMenuController
 import com.example.notavia.settings.SettingsOption
 import com.example.notavia.settings.SettingsUiState
 import com.example.notavia.settings.SettingsViewModel
-import com.example.notavia.settings.ThemePreferences
 import com.example.notavia.ui.installAlphaPressFeedback
 import kotlinx.coroutines.launch
 
@@ -48,12 +46,13 @@ class SettingsActivity : NotaviaActivity() {
             insets
         }
 
+        val appContainer = notaviaContainer()
         viewModel = ViewModelProvider(
             this,
             SettingsViewModel.Factory(
-                ThemePreferences(this),
-                AppearancePreferences(this),
-                LanguagePreferences(this),
+                appContainer.themeSettings,
+                appContainer.appearanceSettings,
+                appContainer.languageSettings,
             ),
         )[SettingsViewModel::class.java]
         setupActions()
